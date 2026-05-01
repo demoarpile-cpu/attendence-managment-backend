@@ -26,7 +26,7 @@ app.use(cors({
 }));
 
 // ⚠️ IMPORTANT: ZKTeco ke liye raw/text body chahiye
-app.use(express.text({ type: "*/*" }));
+//app.use(express.text({ type: "*/*" }));
 
 // Agar tum normal APIs me JSON bhi use karte ho
 app.use(express.json());
