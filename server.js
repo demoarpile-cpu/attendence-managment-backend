@@ -11,7 +11,7 @@ const server = http.createServer(app);
 // ================= SOCKET.IO =================
 
 const allowedOrigins = [
-    "http://attendence.softwaredemolive.live",
+    "https://attendence.softwaredemolive.live",
     "http://localhost:5173"
 ];
 const io = new Server(server, {
