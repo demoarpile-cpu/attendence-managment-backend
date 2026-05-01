@@ -10,7 +10,9 @@ const server = http.createServer(app);
 
 // ================= SOCKET.IO =================
 const io = new Server(server, {
-    cors: { origin: "*" }
+    cors: {
+        origin: "http://attendence.softwaredemolive.live"
+    }
 });
 
 // ================= MIDDLEWARE =================
