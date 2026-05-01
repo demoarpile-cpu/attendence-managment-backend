@@ -14,7 +14,9 @@ const io = new Server(server, {
 });
 
 // ================= MIDDLEWARE =================
-app.use(cors());
+app.use(cors({
+    origin: "http://attendence.softwaredemolive.live",
+}));
 
 // ⚠️ IMPORTANT: ZKTeco ke liye raw/text body chahiye
 app.use(express.text({ type: "*/*" }));
