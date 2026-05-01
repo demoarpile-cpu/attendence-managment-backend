@@ -9,15 +9,20 @@ const app = express();
 const server = http.createServer(app);
 
 // ================= SOCKET.IO =================
+
+const allowedOrigins = [
+    "http://attendence.softwaredemolive.live",
+    "http://localhost:5173"
+];
 const io = new Server(server, {
     cors: {
-        origin: "http://attendence.softwaredemolive.live"
+        origin: allowedOrigins
     }
 });
 
 // ================= MIDDLEWARE =================
 app.use(cors({
-    origin: "http://attendence.softwaredemolive.live",
+    origin: allowedOrigins
 }));
 
 // ⚠️ IMPORTANT: ZKTeco ke liye raw/text body chahiye
