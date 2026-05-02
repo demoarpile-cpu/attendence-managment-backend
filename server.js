@@ -24,7 +24,13 @@ const iclockRoutes = require('./routes/iclock.route');
 const apiRoutes = require('./routes/api');
 
 // ⚠️ IMPORTANT: ZKTeco ke liye raw/text body chahiye, sirf /iclock routes par
-app.use('/iclock', express.text({ type: "*/*", limit: '50mb' }), iclockRoutes);
+app.use('/iclock',
+    express.text({
+        type: ['text/plain', 'application/octet-stream'],
+        limit: '50mb'
+    }),
+    iclockRoutes
+);
 
 app.use('/api', apiRoutes);
 
