@@ -16,18 +16,15 @@ const io = new Server(server, {
 // ================= MIDDLEWARE =================
 app.use(cors());
 
-// ⚠️ IMPORTANT: ZKTeco ke liye raw/text body chahiye
-app.use(express.text({ type: "*/*" }));
-
 // Agar tum normal APIs me JSON bhi use karte ho
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // ================= ROUTES =================
 const iclockRoutes = require('./routes/iclock.route');
 const apiRoutes = require('./routes/api');
 
-// IMPORTANT: ZKTeco machine expects /iclock/cdata at the root level
-app.use('/iclock', iclockRoutes);
+// ⚠️ IMPORTANT: ZKTeco ke liye raw/text body chahiye, sirf /iclock routes par
+app.use('/iclock', express.text({ type: "*/*", limit: '50mb' }), iclockRoutes);
 
 app.use('/api', apiRoutes);
 

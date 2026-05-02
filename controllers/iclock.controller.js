@@ -74,4 +74,4 @@ exports.handleDeviceCmd = (req, res) => {
     console.log(`📨 [ADMS] Command Response - SN: ${req.query.SN}`);
     console.log("Response Body:", req.body);
     res.send("OK");
-};
+};

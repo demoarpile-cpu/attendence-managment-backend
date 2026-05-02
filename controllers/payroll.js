@@ -58,7 +58,7 @@ exports.generatePayroll = async (req, res) => {
 
 exports.getPayrollHistory = async (req, res) => {
     try {
-        let query = 'SELECT p.*, e.name FROM payroll p JOIN employees e ON p.employee_id = e.id';
+        let query = 'SELECT p.*, e.name, e.photo FROM payroll p JOIN employees e ON p.employee_id = e.id';
         const params = [];
 
         if (req.user.role === 'employee') {
@@ -71,5 +71,16 @@ exports.getPayrollHistory = async (req, res) => {
         res.json(rows);
     } catch (err) {
         res.status(500).json({ message: 'Error fetching payroll' });
+    }
+};
+exports.updatePayrollStatus = async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    try {
+        await db.execute('UPDATE payroll SET status = ? WHERE id = ?', [status, id]);
+        res.json({ message: `Payroll marked as ${status}` });
+    } catch (err) {
+        res.status(500).json({ message: 'Error updating payroll status', error: err.message });
     }
 };

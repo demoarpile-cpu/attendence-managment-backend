@@ -23,16 +23,23 @@ router.put('/profile', auth, profileController.updateProfile);
 router.get('/employees', auth, employeeController.getAllEmployees);
 router.post('/employees', auth, employeeController.addEmployee);
 router.get('/employees/:id', auth, employeeController.getEmployeeById);
+router.put('/employees/:id', auth, employeeController.updateEmployee);
 router.delete('/employees/:id', auth, employeeController.deleteEmployee);
 
 // ================= ATTENDANCE =================
 router.get('/attendance', auth, attendanceController.getAttendance);
+router.put('/attendance/:id', auth, attendanceController.updateAttendance);
 router.post('/attendance/manual', auth, attendanceController.addManualAttendance);
+router.post('/attendance/bulk', auth, attendanceController.bulkMarkAttendance);
 router.post('/attendance/process', auth, attendanceController.processLogs);
 
 // ================= PAYROLL =================
 router.get('/payroll', auth, payrollController.getPayrollHistory);
 router.post('/payroll/generate', auth, payrollController.generatePayroll);
+router.patch('/payroll/:id', auth, payrollController.updatePayrollStatus);
+
+// ================= STATS =================
+router.get('/stats/dashboard', auth, attendanceController.getDashboardStats);
 
 // ================= SETTINGS =================
 router.get('/settings', auth, settingsController.getSettings);

@@ -13,13 +13,26 @@ exports.getAllEmployees = async (req, res) => {
 
 // Add new employee
 exports.addEmployee = async (req, res) => {
-    const { machine_id, name, role, department, email, phone, salary_rate, salary_type, password, joined_date, photo } = req.body;
+    const { 
+        machine_id, 
+        name, 
+        role = '', 
+        department = 'General', 
+        shift = 'Morning Shift', 
+        email = '', 
+        phone = '', 
+        salary_rate = 0, 
+        salary_type = 'hourly', 
+        password = 'password123', 
+        joined_date = new Date().toISOString().split('T')[0], 
+        photo = null 
+    } = req.body;
 
     try {
         // 1. Insert into employees table
         const [empResult] = await db.execute(
-            'INSERT INTO employees (machine_id, name, role, department, email, phone, salary_rate, salary_type, joined_date, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [machine_id, name, role, department, email, phone, salary_rate, salary_type, joined_date, photo]
+            'INSERT INTO employees (machine_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [machine_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo]
         );
 
         const employeeId = empResult.insertId;
@@ -27,8 +40,8 @@ exports.addEmployee = async (req, res) => {
 
         // 2. Create login user
         await db.execute(
-            'INSERT INTO users (employee_id, email, password, role) VALUES (?, ?, ?, ?)',
-            [employeeId, email, hashedPassword, 'employee']
+            'INSERT INTO users (employee_id, email, password, role, name) VALUES (?, ?, ?, ?, ?)',
+            [employeeId, email, hashedPassword, 'employee', name]
         );
 
         res.status(201).json({ message: 'Employee added successfully', id: employeeId });
@@ -64,5 +77,51 @@ exports.deleteEmployee = async (req, res) => {
         res.json({ message: 'Employee deleted successfully' });
     } catch (err) {
         res.status(500).json({ message: 'Error deleting employee', error: err.message });
+    }
+};
+// Update employee
+exports.updateEmployee = async (req, res) => {
+    const { id } = req.params;
+    const { 
+        machine_id, 
+        name, 
+        role = '', 
+        department = 'General', 
+        shift = 'Morning Shift', 
+        email = '', 
+        phone = '', 
+        salary_rate = 0, 
+        salary_type = 'hourly', 
+        password = '', 
+        joined_date, 
+        photo 
+    } = req.body;
+
+    try {
+        // 1. Update employees table
+        await db.execute(
+            'UPDATE employees SET machine_id = ?, name = ?, role = ?, department = ?, shift = ?, email = ?, phone = ?, salary_rate = ?, salary_type = ?, joined_date = ?, photo = ? WHERE id = ?',
+            [machine_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, id]
+        );
+
+        // 2. Update users table if email, name or password provided
+        if (email || name) {
+            if (password) {
+                const hashedPassword = await bcrypt.hash(password, 10);
+                await db.execute(
+                    'UPDATE users SET email = ?, name = ?, password = ? WHERE employee_id = ?',
+                    [email, name, hashedPassword, id]
+                );
+            } else {
+                await db.execute(
+                    'UPDATE users SET email = ?, name = ? WHERE employee_id = ?',
+                    [email, name, id]
+                );
+            }
+        }
+
+        res.json({ message: 'Employee updated successfully' });
+    } catch (err) {
+        res.status(500).json({ message: 'Error updating employee', error: err.message });
     }
 };
