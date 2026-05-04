@@ -98,6 +98,44 @@ const initDB = async () => {
             )
         `);
 
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS public_holidays (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                holiday_name VARCHAR(150) NOT NULL,
+                holiday_date DATE NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS settings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                machine_ip VARCHAR(50) DEFAULT NULL,
+                machine_port INT DEFAULT 4370,
+                machine_alias VARCHAR(100) DEFAULT 'Main Entrance',
+                sync_interval INT DEFAULT 30,
+                late_deduction TINYINT(1) DEFAULT 1,
+                salary_cycle VARCHAR(50) DEFAULT '15 Days Cycle',
+                ot_multiplier DECIMAL(4,2) DEFAULT 1.50,
+                business_name VARCHAR(150) DEFAULT 'BioTrack Pro',
+                business_address TEXT DEFAULT '',
+                business_phone VARCHAR(50) DEFAULT '',
+                business_email VARCHAR(150) DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        `);
+
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                admin_id INT,
+                action VARCHAR(100) NOT NULL,
+                target_id INT,
+                details JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
         console.log('🔄 Checking database columns...');
         const columns = [
             // Employees Table
@@ -155,6 +193,13 @@ const initDB = async () => {
                 ['admin@biotrack.com', hashedPassword, 'admin', 'System Admin']
             );
             console.log('🎁 Seeded default admin user');
+        }
+
+        // 4. Seed Default Settings if empty
+        const [settingsCount] = await db.execute('SELECT COUNT(*) as count FROM settings');
+        if (settingsCount[0].count === 0) {
+            await db.execute('INSERT INTO settings (id, business_name) VALUES (1, "BioTrack Pro")');
+            console.log('⚙️ Seeded default settings');
         }
 
         console.log('✅ Database schema check complete');
