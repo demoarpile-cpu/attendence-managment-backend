@@ -9,7 +9,9 @@ const pool = mysql.createPool({
     database: process.env.DB_NAME,
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    timezone: 'Z',
+    dateStrings: true
 });
 
 module.exports = pool.promise();
