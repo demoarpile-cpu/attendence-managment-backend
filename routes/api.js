@@ -10,7 +10,6 @@ const authController = require('../controllers/auth');
 
 // Auth
 router.post('/login', authController.login);
-router.post('/register', authController.register);
 
 // Profile
 router.get('/profile', auth, profileController.getProfile);
@@ -40,7 +39,7 @@ router.get('/payroll/:id', auth, payrollController.getPayrollById);
 router.get('/settings', auth, settingsController.getSettings);
 router.put('/settings', auth, settingsController.updateSettings);
 
-// Debug route (to be removed after fix)
+// Debug route
 router.get('/debug-db', async (req, res) => {
     try {
         const db = require('../config/db');
