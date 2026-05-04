@@ -127,14 +127,26 @@ exports.updateAttendance = async (req, res) => {
 
         let totalHours = 0;
         if (in_time && out_time) {
-            const diff = new Date(out_time) - new Date(in_time);
-            if (!isNaN(diff)) {
-                totalHours = (diff / (1000 * 60 * 60)).toFixed(2);
+            const inDate = new Date(in_time);
+            const outDate = new Date(out_time);
+            if (!isNaN(inDate.getTime()) && !isNaN(outDate.getTime())) {
+                const diff = outDate - inDate;
+                totalHours = Math.max(0, (diff / (1000 * 60 * 60))).toFixed(2);
             }
         }
         
         const finalStatus = status ? status.toLowerCase() : 'present';
-        await db.execute('UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ? WHERE id = ?', [in_time, out_time, finalStatus, totalHours, id]);
+        // Normalize datetime-local format ("2026-05-04T13:30") to MySQL format ("2026-05-04 13:30:00")
+        const normalizeDateTime = (dt) => {
+            if (!dt) return null;
+            // Handle "YYYY-MM-DDTHH:mm" or "YYYY-MM-DD HH:mm" or "YYYY-MM-DD HH:mm:ss"
+            const normalized = dt.replace('T', ' ');
+            return normalized.length === 16 ? normalized + ':00' : normalized;
+        };
+        const formattedIn = normalizeDateTime(in_time);
+        const formattedOut = normalizeDateTime(out_time);
+        
+        await db.execute('UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ? WHERE id = ?', [formattedIn, formattedOut, finalStatus, totalHours, id]);
         res.json({ message: 'Updated' });
     } catch (err) {
         res.status(500).json({ message: 'Failed', error: err.message });
@@ -241,6 +253,27 @@ exports.getDashboardStats = async (req, res) => {
 exports.getPublicHolidays = async (req, res) => {
     try { const [rows] = await db.execute('SELECT * FROM public_holidays ORDER BY holiday_date ASC'); res.json(rows); } 
     catch (err) { res.status(500).json({ message: 'Error', error: err.message }); }
+};
+
+exports.addPublicHoliday = async (req, res) => {
+    const { name, date } = req.body;
+    if (!name || !date) return res.status(400).json({ message: 'Name and date are required' });
+    try {
+        await db.execute('INSERT INTO public_holidays (holiday_name, holiday_date) VALUES (?, ?)', [name, date]);
+        res.json({ message: 'Holiday added' });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to add holiday', error: err.message });
+    }
+};
+
+exports.deletePublicHoliday = async (req, res) => {
+    const { id } = req.params;
+    try {
+        await db.execute('DELETE FROM public_holidays WHERE id = ?', [id]);
+        res.json({ message: 'Holiday deleted' });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to delete holiday', error: err.message });
+    }
 };
 
 const logAudit = async (adminId, action, targetId, details) => {

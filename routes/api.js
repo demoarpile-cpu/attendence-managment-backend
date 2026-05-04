@@ -26,10 +26,12 @@ router.delete('/employees/:id', auth, employeeController.deleteEmployee);
 router.get('/attendance', auth, attendanceController.getAttendance);
 router.post('/attendance/manual', auth, attendanceController.addManualAttendance);
 router.post('/attendance/bulk', auth, attendanceController.bulkMarkAttendance);
-router.put('/attendance/:id', auth, attendanceController.updateAttendance);
 router.get('/attendance/stats', auth, attendanceController.getDashboardStats);
 router.get('/stats/dashboard', auth, attendanceController.getDashboardStats);
 router.get('/attendance/holidays', auth, attendanceController.getPublicHolidays);
+router.post('/attendance/holidays', auth, attendanceController.addPublicHoliday);
+router.delete('/attendance/holidays/:id', auth, attendanceController.deletePublicHoliday);
+router.put('/attendance/:id', auth, attendanceController.updateAttendance);
 
 // Payroll
 router.get('/payroll', auth, payrollController.getPayrollHistory);
