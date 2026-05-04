@@ -35,7 +35,7 @@ exports.getAttendance = async (req, res) => {
 
     // Data Isolation for Multi-Admin
     if (req.user.role === 'admin') {
-        whereClauses.push('e.created_by = ?');
+        whereClauses.push('(e.created_by = ? OR e.created_by IS NULL)');
         params.push(req.user.id);
     }
 
@@ -196,54 +196,96 @@ exports.getDashboardStats = async (req, res) => {
         const cycleEnd = now.getDate() <= 15 ? 15 : 31;
         const cycleStartDate = new Date(now.getFullYear(), now.getMonth(), cycleStart).toISOString().split('T')[0];
 
-        // Filter employees by creator if admin
+        // 1. Fetch All Active Employees
         let empQuery = 'SELECT id, salary_rate, salary_type FROM employees WHERE status = "active"';
-        let attQuery = 'SELECT a.status, a.employee_id FROM attendance a JOIN employees e ON a.employee_id = e.id WHERE a.date = ?';
-        let cycleAttQuery = 'SELECT a.employee_id, COUNT(*) as days FROM attendance a JOIN employees e ON a.employee_id = e.id WHERE a.date BETWEEN ? AND ? AND (a.status = "present" || a.status = "late")';
-        let params = [];
-        let attParams = [today];
-        let cycleParams = [cycleStartDate, today];
-
+        let empParams = [];
         if (req.user.role === 'admin') {
-            empQuery += ' AND created_by = ?';
-            params.push(req.user.id);
-            
-            attQuery += ' AND e.created_by = ?';
-            attParams.push(req.user.id);
+            empQuery += ' AND (created_by = ? OR created_by IS NULL)';
+            empParams.push(req.user.id);
+        }
+        const [employees] = await db.execute(empQuery, empParams);
 
-            cycleAttQuery += ' AND e.created_by = ?';
+        // 2. Fetch Today's Attendance
+        let attQuery = `
+            SELECT a.status, a.employee_id 
+            FROM attendance a 
+            JOIN employees e ON a.employee_id = e.id 
+            WHERE a.date = ?
+        `;
+        let attParams = [today];
+        if (req.user.role === 'admin') {
+            attQuery += ' AND (e.created_by = ? OR e.created_by IS NULL)';
+            attParams.push(req.user.id);
+        }
+        const [attendance] = await db.execute(attQuery, attParams);
+
+        // 3. Fetch Cycle Attendance for Payout Calculation
+        let cycleAttQuery = `
+            SELECT a.employee_id, COUNT(*) as days 
+            FROM attendance a 
+            JOIN employees e ON a.employee_id = e.id 
+            WHERE a.date BETWEEN ? AND ? 
+            AND (a.status = 'present' OR a.status = 'late')
+        `;
+        let cycleParams = [cycleStartDate, today];
+        if (req.user.role === 'admin') {
+            cycleAttQuery += ' AND (e.created_by = ? OR e.created_by IS NULL)';
             cycleParams.push(req.user.id);
         }
         cycleAttQuery += ' GROUP BY a.employee_id';
-
-        const [employees] = await db.execute(empQuery, params);
-        const [attendance] = await db.execute(attQuery, attParams);
         const [cycleAttendance] = await db.execute(cycleAttQuery, cycleParams);
 
+        // 4. Calculate Estimated Payout
         let totalPayout = 0;
         cycleAttendance.forEach(att => {
             const emp = employees.find(e => e.id === att.employee_id);
-            if (emp) totalPayout += att.days * (emp.salary_rate || 0);
+            if (emp) {
+                const rate = parseFloat(emp.salary_rate || 0);
+                totalPayout += att.days * rate;
+            }
         });
 
+        // 5. Generate 7-Day Trend Data
         const trendData = [];
         for (let i = 6; i >= 0; i--) {
-            const d = new Date(); d.setDate(d.getDate() - i);
+            const d = new Date(); 
+            d.setDate(d.getDate() - i);
             const dStr = d.toISOString().split('T')[0];
-            let trendQuery = 'SELECT COUNT(*) as present FROM attendance a JOIN employees e ON a.employee_id = e.id WHERE a.date = ? AND (a.status = "present" || a.status = "late")';
+            
+            let trendQuery = `
+                SELECT COUNT(*) as count 
+                FROM attendance a 
+                JOIN employees e ON a.employee_id = e.id 
+                WHERE a.date = ? AND (a.status = 'present' OR a.status = 'late')
+            `;
             let trendParams = [dStr];
-            if (req.user.role === 'admin') { trendQuery += ' AND e.created_by = ?'; trendParams.push(req.user.id); }
+            if (req.user.role === 'admin') {
+                trendQuery += ' AND (e.created_by = ? OR e.created_by IS NULL)';
+                trendParams.push(req.user.id);
+            }
+            
             const [attDay] = await db.execute(trendQuery, trendParams);
-            trendData.push({ name: d.toLocaleDateString('en-US', { weekday: 'short' }), present: attDay[0].present, absent: employees.length - attDay[0].present });
+            const presentCount = attDay[0].count;
+            
+            trendData.push({ 
+                name: d.toLocaleDateString('en-US', { weekday: 'short' }), 
+                present: presentCount, 
+                absent: Math.max(0, employees.length - presentCount) 
+            });
         }
 
         res.json({
             totalStaff: employees.length,
             presentToday: attendance.filter(a => a.status?.toLowerCase() === 'present' || a.status?.toLowerCase() === 'late').length,
-            absentToday: employees.length - attendance.filter(a => a.status?.toLowerCase() === 'present' || a.status?.toLowerCase() === 'late' || a.status?.toLowerCase() === 'half_day').length,
+            absentToday: Math.max(0, employees.length - attendance.filter(a => a.status?.toLowerCase() === 'present' || a.status?.toLowerCase() === 'late' || a.status?.toLowerCase() === 'half_day').length),
             lateToday: attendance.filter(a => a.status?.toLowerCase() === 'late').length,
             trend: trendData,
-            salaryCycle: { progress: Math.min(Math.round(((now.getDate() - cycleStart + 1) / (cycleEnd - cycleStart + 1)) * 100), 100), day: now.getDate() - cycleStart + 1, totalDays: cycleEnd - cycleStart + 1, estimatedPayout: totalPayout }
+            salaryCycle: { 
+                progress: Math.min(Math.round(((now.getDate() - cycleStart + 1) / (cycleEnd - cycleStart + 1)) * 100), 100), 
+                day: now.getDate() - cycleStart + 1, 
+                totalDays: cycleEnd - cycleStart + 1, 
+                estimatedPayout: totalPayout 
+            }
         });
     } catch (err) {
         res.status(500).json({ message: 'Stats error', error: err.message });

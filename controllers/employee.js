@@ -9,7 +9,7 @@ exports.getAllEmployees = async (req, res) => {
 
         // If admin, they only see staff they added
         if (req.user.role === 'admin') {
-            query += ' WHERE created_by = ?';
+            query += ' WHERE (created_by = ? OR created_by IS NULL)';
             params.push(req.user.id);
         }
 
