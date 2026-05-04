@@ -119,6 +119,8 @@ exports.addManualAttendance = async (req, res) => {
         const query = 'INSERT INTO attendance (employee_id, date, in_time, out_time, total_hours, status) VALUES (?, ?, ?, ?, ?, ?)';
         await db.execute(query, [employeeId, date, formattedIn || null, formattedOut || null, totalHours || 0, status || 'present']);
         
+        await logAudit(req.user.id, 'ADD_MANUAL_ATTENDANCE', employeeId, { date, status, inTime, outTime });
+
         res.json({ message: 'Manual attendance added successfully' });
     } catch (err) {
         res.status(500).json({ message: 'Failed to add manual attendance', error: err.message });
@@ -141,6 +143,9 @@ exports.updateAttendance = async (req, res) => {
             'UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ? WHERE id = ?',
             [in_time || null, out_time || null, status || 'present', totalHours || 0, id]
         );
+
+        await logAudit(req.user.id, 'UPDATE_ATTENDANCE', id, { in_time, out_time, status });
+
         res.json({ message: 'Attendance updated successfully' });
     } catch (err) {
         res.status(500).json({ message: 'Update failed', error: err.message });
@@ -181,6 +186,9 @@ exports.bulkMarkAttendance = async (req, res) => {
                 );
             }
         }
+
+        await logAudit(req.user.id, 'BULK_MARK_ATTENDANCE', 'multiple', { employeeIds, date, status, inTime, outTime });
+
         res.json({ message: 'Bulk attendance updated' });
     } catch (err) {
         res.status(500).json({ message: 'Bulk update failed', error: err.message });
@@ -245,5 +253,25 @@ exports.getDashboardStats = async (req, res) => {
         });
     } catch (err) {
         res.status(500).json({ message: 'Error fetching stats', error: err.message });
+    }
+};
+
+exports.getPublicHolidays = async (req, res) => {
+    try {
+        const [rows] = await db.execute('SELECT * FROM public_holidays ORDER BY holiday_date ASC');
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching holidays', error: err.message });
+    }
+};
+
+const logAudit = async (adminId, action, targetId, details) => {
+    try {
+        await db.execute(
+            'INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, ?, ?, ?)',
+            [adminId, action, targetId, JSON.stringify(details)]
+        );
+    } catch (err) {
+        console.error('Audit log failed:', err);
     }
 };

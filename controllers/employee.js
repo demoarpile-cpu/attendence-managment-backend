@@ -25,14 +25,17 @@ exports.addEmployee = async (req, res) => {
         salary_type = 'hourly', 
         password = 'password123', 
         joined_date = new Date().toISOString().split('T')[0], 
-        photo = null 
+        photo = null,
+        uif_number = '',
+        advance_balance = 0,
+        signature = null
     } = req.body;
 
     try {
         // 1. Insert into employees table
         const [empResult] = await db.execute(
-            'INSERT INTO employees (machine_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [machine_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo]
+            'INSERT INTO employees (machine_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, uif_number, advance_balance, signature) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [machine_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, uif_number, advance_balance, signature]
         );
 
         const employeeId = empResult.insertId;
@@ -94,13 +97,16 @@ exports.updateEmployee = async (req, res) => {
         salary_type = 'hourly', 
         password = '', 
         joined_date, 
-        photo 
+        photo,
+        uif_number,
+        advance_balance,
+        signature
     } = req.body;
 
     try {
         // 1. Update employees table
         await db.execute(
-            'UPDATE employees SET machine_id = ?, name = ?, role = ?, department = ?, shift = ?, email = ?, phone = ?, salary_rate = ?, salary_type = ?, joined_date = ?, photo = ? WHERE id = ?',
+            'UPDATE employees SET machine_id = ?, name = ?, role = ?, department = ?, shift = ?, email = ?, phone = ?, salary_rate = ?, salary_type = ?, joined_date = ?, photo = ?, uif_number = ?, advance_balance = ?, signature = ? WHERE id = ?',
             [
                 machine_id || null, 
                 name || null, 
@@ -113,6 +119,9 @@ exports.updateEmployee = async (req, res) => {
                 salary_type || 'hourly', 
                 joined_date || null, 
                 photo || null, 
+                uif_number || '',
+                advance_balance || 0,
+                signature || null,
                 id
             ]
         );

@@ -18,12 +18,16 @@ exports.updateSettings = async (req, res) => {
         sync_interval, 
         late_deduction, 
         salary_cycle, 
-        ot_multiplier 
+        ot_multiplier,
+        business_name,
+        business_address,
+        business_phone,
+        business_email
     } = req.body;
 
     try {
         await db.execute(
-            'UPDATE settings SET machine_ip = ?, machine_port = ?, machine_alias = ?, sync_interval = ?, late_deduction = ?, salary_cycle = ?, ot_multiplier = ? WHERE id = 1',
+            'UPDATE settings SET machine_ip = ?, machine_port = ?, machine_alias = ?, sync_interval = ?, late_deduction = ?, salary_cycle = ?, ot_multiplier = ?, business_name = ?, business_address = ?, business_phone = ?, business_email = ? WHERE id = 1',
             [
                 machine_ip || null, 
                 machine_port || 4370, 
@@ -31,7 +35,11 @@ exports.updateSettings = async (req, res) => {
                 sync_interval || 30, 
                 late_deduction ? 1 : 0, 
                 salary_cycle || '15 Days Cycle', 
-                ot_multiplier || 1.5
+                ot_multiplier || 1.5,
+                business_name || 'BioTrack Pro',
+                business_address || '',
+                business_phone || '',
+                business_email || ''
             ]
         );
         res.json({ message: 'Settings updated successfully' });

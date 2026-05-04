@@ -32,6 +32,7 @@ router.put('/attendance/:id', auth, attendanceController.updateAttendance);
 router.post('/attendance/manual', auth, attendanceController.addManualAttendance);
 router.post('/attendance/bulk', auth, attendanceController.bulkMarkAttendance);
 router.post('/attendance/process', auth, attendanceController.processLogs);
+router.get('/attendance/holidays', auth, attendanceController.getPublicHolidays);
 
 // ================= PAYROLL =================
 router.get('/payroll', auth, payrollController.getPayrollHistory);

@@ -5,7 +5,7 @@ exports.generatePayroll = async (req, res) => {
 
     try {
         // 1. Get all active employees
-        const [employees] = await db.execute('SELECT id, name, salary_rate, salary_type FROM employees WHERE status = "active"');
+        const [employees] = await db.execute('SELECT id, name, salary_rate, salary_type, advance_balance FROM employees WHERE status = "active"');
 
         // 2. Get settings for deduction rules
         const [settings] = await db.execute('SELECT late_deduction FROM settings LIMIT 1');
@@ -32,25 +32,36 @@ exports.generatePayroll = async (req, res) => {
                 baseSalary = days[0].days * emp.salary_rate;
             }
 
-            // 4. Calculate deductions
-            let deductions = 0;
+            // 4. Calculate UIF (1% of baseSalary)
+            const uifAmount = baseSalary * 0.01;
+
+            // 5. Calculate Deductions (Late penalties)
+            let lateDeductions = 0;
             if (settings[0]?.late_deduction) {
-                deductions = lateCount * latePenaltyAmount;
+                lateDeductions = lateCount * latePenaltyAmount;
             }
 
-            const netSalary = baseSalary - deductions;
+            // 6. Handle Advance Payment Deduction
+            const advanceToDeduct = Math.min(emp.advance_balance || 0, baseSalary - lateDeductions - uifAmount);
+            
+            const netSalary = baseSalary - lateDeductions - uifAmount - advanceToDeduct;
 
-            // 5. Delete existing record for this period if exists (to avoid duplicates)
+            // 7. Delete existing record for this period if exists
             await db.execute('DELETE FROM payroll WHERE employee_id = ? AND cycle_start = ? AND cycle_end = ?', [emp.id, startDate, endDate]);
 
-            // 6. Save to payroll table
+            // 8. Save to payroll table
             await db.execute(
-                'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, base_salary, deductions, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                [emp.id, startDate, endDate, totalHours, baseSalary, deductions, netSalary, 'pending']
+                'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, base_salary, deductions, uif_amount, advance_deduction, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [emp.id, startDate, endDate, totalHours, baseSalary, lateDeductions, uifAmount, advanceToDeduct, netSalary, 'pending']
             );
+
+            // 9. Update Employee Advance Balance if any was deducted
+            if (advanceToDeduct > 0) {
+                await db.execute('UPDATE employees SET advance_balance = advance_balance - ? WHERE id = ?', [advanceToDeduct, emp.id]);
+            }
         }
 
-        res.json({ message: 'Payroll generated successfully with deductions' });
+        res.json({ message: 'Payroll generated successfully with UIF and Advance Deductions' });
     } catch (err) {
         res.status(500).json({ message: 'Payroll generation failed', error: err.message });
     }
