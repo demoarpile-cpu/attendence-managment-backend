@@ -26,7 +26,7 @@ exports.addEmployee = async (req, res) => {
     const { 
         machine_id, custom_id, name, role, department, shift, email, phone, 
         salary_rate, salary_type, password, joined_date, 
-        uif_number, advance_balance, eSignature 
+        uif_number, advance_balance, eSignature, is_uif_registered 
     } = req.body;
     
     // User who is creating this record
@@ -41,7 +41,7 @@ exports.addEmployee = async (req, res) => {
     try {
         // 1. Insert into employees table
         const [empResult] = await db.execute(
-            'INSERT INTO employees (machine_id, custom_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, uif_number, advance_balance, signature, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO employees (machine_id, custom_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, uif_number, advance_balance, signature, created_by, is_uif_registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 machine_id || null, 
                 custom_id || '', 
@@ -58,7 +58,8 @@ exports.addEmployee = async (req, res) => {
                 uif_number || '', 
                 advance_balance || 0, 
                 eSignature || null,
-                creatorId
+                creatorId,
+                is_uif_registered === undefined ? 1 : (is_uif_registered ? 1 : 0)
             ]
         );
 
@@ -103,7 +104,7 @@ exports.updateEmployee = async (req, res) => {
     const { 
         machine_id, custom_id, name, role, department, shift, email, phone, 
         salary_rate, salary_type, joined_date, 
-        uif_number, advance_balance, eSignature, status, password 
+        uif_number, advance_balance, eSignature, status, password, is_uif_registered 
     } = req.body;
 
     // Use uploaded file if present
@@ -121,7 +122,7 @@ exports.updateEmployee = async (req, res) => {
 
         // 1. Update employees table
         await db.execute(
-            'UPDATE employees SET machine_id = ?, custom_id = ?, name = ?, role = ?, department = ?, shift = ?, email = ?, phone = ?, salary_rate = ?, salary_type = ?, joined_date = ?, photo = ?, uif_number = ?, advance_balance = ?, signature = ?, status = ? WHERE id = ?',
+            'UPDATE employees SET machine_id = ?, custom_id = ?, name = ?, role = ?, department = ?, shift = ?, email = ?, phone = ?, salary_rate = ?, salary_type = ?, joined_date = ?, photo = ?, uif_number = ?, advance_balance = ?, signature = ?, status = ?, is_uif_registered = ? WHERE id = ?',
             [
                 machine_id || null, 
                 custom_id || '', 
@@ -139,6 +140,7 @@ exports.updateEmployee = async (req, res) => {
                 advance_balance || 0, 
                 eSignature || null,
                 status || 'active',
+                is_uif_registered === undefined ? 1 : (is_uif_registered ? 1 : 0),
                 id
             ]
         );

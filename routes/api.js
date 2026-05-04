@@ -35,6 +35,7 @@ router.get('/attendance/holidays', auth, attendanceController.getPublicHolidays)
 router.get('/payroll', auth, payrollController.getPayrollHistory);
 router.post('/payroll/generate', auth, payrollController.generatePayroll);
 router.get('/payroll/:id', auth, payrollController.getPayrollById);
+router.patch('/payroll/:id', auth, payrollController.updatePayrollStatus);
 
 // Settings
 router.get('/settings', auth, settingsController.getSettings);

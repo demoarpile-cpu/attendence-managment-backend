@@ -1,17 +1,37 @@
 const db = require('../config/db');
 
 exports.generatePayroll = async (req, res) => {
-    const { employeeIds, cycleStart, cycleEnd } = req.body;
+    let { employeeIds, cycleStart, cycleEnd, startDate, endDate } = req.body;
+    
+    // Normalize field names from frontend
+    const start = cycleStart || startDate;
+    const end = cycleEnd || endDate;
+
     try {
+        if (!start || !end) {
+            return res.status(400).json({ message: 'Start and end dates are required' });
+        }
+
+        // If no specific employees provided, get all active employees for this admin
+        if (!employeeIds || (Array.isArray(employeeIds) && employeeIds.length === 0)) {
+            const [allEmp] = await db.execute('SELECT id FROM employees WHERE created_by = ? AND status = "active"', [req.user.id]);
+            employeeIds = allEmp.map(e => e.id);
+        }
+
+        if (employeeIds.length === 0) {
+            return res.json({ message: 'No employees to process', results: [] });
+        }
+
         const results = [];
         for (const empId of employeeIds) {
-            const [empCheck] = await db.execute('SELECT created_by, salary_rate, salary_type FROM employees WHERE id = ?', [empId]);
-            if (empCheck.length > 0 && req.user.role === 'admin' && empCheck[0].created_by !== req.user.id) continue;
+            const [empCheck] = await db.execute('SELECT created_by, salary_rate, salary_type, is_uif_registered, advance_balance FROM employees WHERE id = ?', [empId]);
+            if (empCheck.length === 0) continue;
+            if (req.user.role === 'admin' && empCheck[0].created_by !== req.user.id) continue;
             
             const employee = empCheck[0];
             const [attendance] = await db.execute(
                 'SELECT status, total_hours FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?',
-                [empId, cycleStart, cycleEnd]
+                [empId, start, end]
             );
 
             let totalHours = 0;
@@ -26,21 +46,23 @@ exports.generatePayroll = async (req, res) => {
             if (employee.salary_type === 'hourly') grossEarnings = totalHours * rate;
             else if (employee.salary_type === 'daily') grossEarnings = presentDays * rate;
 
-            const uif = grossEarnings * 0.01;
-            const netSalary = grossEarnings - uif;
+            // UIF is 1% of total earnings if registered
+            const uif = employee.is_uif_registered ? (grossEarnings * 0.01) : 0;
+            const advance = parseFloat(employee.advance_balance || 0);
+            const netSalary = grossEarnings - uif - advance;
 
-            const [existing] = await db.execute('SELECT id FROM payroll WHERE employee_id = ? AND cycle_start = ? AND cycle_end = ?', [empId, cycleStart, cycleEnd]);
+            const [existing] = await db.execute('SELECT id FROM payroll WHERE employee_id = ? AND cycle_start = ? AND cycle_end = ?', [empId, start, end]);
             
             if (existing.length > 0) {
                 await db.execute(
-                    'UPDATE payroll SET total_hours = ?, gross_earnings = ?, uif_amount = ?, net_salary = ?, status = "pending" WHERE id = ?',
-                    [totalHours, grossEarnings, uif, netSalary, existing[0].id]
+                    'UPDATE payroll SET total_hours = ?, gross_earnings = ?, uif_amount = ?, advance_deduction = ?, net_salary = ?, status = "pending" WHERE id = ?',
+                    [totalHours, grossEarnings, uif, advance, netSalary, existing[0].id]
                 );
                 results.push({ empId, action: 'updated' });
             } else {
                 await db.execute(
-                    'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, gross_earnings, uif_amount, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, "pending")',
-                    [empId, cycleStart, cycleEnd, totalHours, grossEarnings, uif, netSalary]
+                    'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, gross_earnings, uif_amount, advance_deduction, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, "pending")',
+                    [empId, start, end, totalHours, grossEarnings, uif, advance, netSalary]
                 );
                 results.push({ empId, action: 'created' });
             }
@@ -129,6 +151,13 @@ exports.updatePayrollStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
     try {
+        if (status === 'paid') {
+            const [rows] = await db.execute('SELECT employee_id, advance_deduction FROM payroll WHERE id = ?', [id]);
+            if (rows.length > 0) {
+                const p = rows[0];
+                await db.execute('UPDATE employees SET advance_balance = advance_balance - ? WHERE id = ?', [p.advance_deduction || 0, p.employee_id]);
+            }
+        }
         await db.execute('UPDATE payroll SET status = ? WHERE id = ?', [status, id]);
         res.json({ message: 'Status updated' });
     } catch (err) {

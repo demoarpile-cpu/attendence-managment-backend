@@ -127,9 +127,14 @@ exports.updateAttendance = async (req, res) => {
 
         let totalHours = 0;
         if (in_time && out_time) {
-            totalHours = ((new Date(out_time) - new Date(in_time)) / (1000 * 60 * 60)).toFixed(2);
+            const diff = new Date(out_time) - new Date(in_time);
+            if (!isNaN(diff)) {
+                totalHours = (diff / (1000 * 60 * 60)).toFixed(2);
+            }
         }
-        await db.execute('UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ? WHERE id = ?', [in_time, out_time, status, totalHours, id]);
+        
+        const finalStatus = status ? status.toLowerCase() : 'present';
+        await db.execute('UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ? WHERE id = ?', [in_time, out_time, finalStatus, totalHours, id]);
         res.json({ message: 'Updated' });
     } catch (err) {
         res.status(500).json({ message: 'Failed', error: err.message });
@@ -139,9 +144,13 @@ exports.updateAttendance = async (req, res) => {
 exports.bulkMarkAttendance = async (req, res) => {
     const { employeeIds, date, status, inTime, outTime } = req.body;
     try {
-        let fIn = inTime ? `${date} ${inTime}:00` : null;
-        let fOut = outTime ? `${date} ${outTime}:00` : null;
-        let totalHours = (fIn && fOut) ? ((new Date(fOut) - new Date(fIn)) / (1000 * 60 * 60)).toFixed(2) : 0;
+        // Set default times if not provided: 8am and 5pm
+        const finalIn = inTime || '08:00';
+        const finalOut = outTime || '17:00';
+        
+        let fIn = `${date} ${finalIn}:00`;
+        let fOut = `${date} ${finalOut}:00`;
+        let totalHours = ((new Date(fOut) - new Date(fIn)) / (1000 * 60 * 60)).toFixed(2);
 
         for (let empId of employeeIds) {
             // Check ownership
@@ -150,9 +159,15 @@ exports.bulkMarkAttendance = async (req, res) => {
 
             const [existing] = await db.execute('SELECT id FROM attendance WHERE employee_id = ? AND date = ?', [empId, date]);
             if (existing.length > 0) {
-                await db.execute('UPDATE attendance SET status = ?, in_time = ?, out_time = ?, total_hours = ? WHERE id = ?', [status, fIn, fOut, totalHours, existing[0].id]);
+                await db.execute(
+                    'UPDATE attendance SET status = ?, in_time = ?, out_time = ?, total_hours = ?, marked_by = ? WHERE id = ?', 
+                    [status, fIn, fOut, totalHours, req.user.id, existing[0].id]
+                );
             } else {
-                await db.execute('INSERT INTO attendance (employee_id, date, status, in_time, out_time, total_hours) VALUES (?, ?, ?, ?, ?, ?)', [empId, date, status, fIn, fOut, totalHours]);
+                await db.execute(
+                    'INSERT INTO attendance (employee_id, date, status, in_time, out_time, total_hours, marked_by) VALUES (?, ?, ?, ?, ?, ?, ?)', 
+                    [empId, date, status, fIn, fOut, totalHours, req.user.id]
+                );
             }
         }
         res.json({ message: 'Bulk updated' });
