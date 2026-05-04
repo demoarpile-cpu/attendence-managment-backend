@@ -40,6 +40,8 @@ exports.addEmployee = async (req, res) => {
 
     try {
         // 1. Insert into employees table
+        const formattedJoinedDate = joined_date ? joined_date.split('T')[0] : new Date().toISOString().split('T')[0];
+
         const [empResult] = await db.execute(
             'INSERT INTO employees (machine_id, custom_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, uif_number, advance_balance, signature, created_by, is_uif_registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
@@ -53,7 +55,7 @@ exports.addEmployee = async (req, res) => {
                 phone || '', 
                 salary_rate || 0, 
                 salary_type || 'hourly', 
-                joined_date || new Date().toISOString().split('T')[0], 
+                formattedJoinedDate, 
                 photo || null, 
                 uif_number || '', 
                 advance_balance || 0, 
@@ -121,6 +123,8 @@ exports.updateEmployee = async (req, res) => {
         }
 
         // 1. Update employees table
+        const formattedJoinedDate = joined_date ? joined_date.split('T')[0] : null;
+
         await db.execute(
             'UPDATE employees SET machine_id = ?, custom_id = ?, name = ?, role = ?, department = ?, shift = ?, email = ?, phone = ?, salary_rate = ?, salary_type = ?, joined_date = ?, photo = ?, uif_number = ?, advance_balance = ?, signature = ?, status = ?, is_uif_registered = ? WHERE id = ?',
             [
@@ -134,7 +138,7 @@ exports.updateEmployee = async (req, res) => {
                 phone || '', 
                 salary_rate || 0, 
                 salary_type || 'hourly', 
-                joined_date || null, 
+                formattedJoinedDate, 
                 photo || null, 
                 uif_number || '', 
                 advance_balance || 0, 
