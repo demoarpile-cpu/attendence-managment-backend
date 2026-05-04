@@ -30,8 +30,10 @@ const io = new Server(server, {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-// Agar tum normal APIs me JSON bhi use karte ho
+
+
 app.use(express.json({ limit: '50mb' }));
+app.use('/uploads', express.static('uploads'));
 
 // ================= ROUTES =================
 const iclockRoutes = require('./routes/iclock.route');
@@ -66,6 +68,37 @@ io.on('connection', (socket) => {
 // ================= SERVER START =================
 const PORT = process.env.PORT || 8081;
 
-server.listen(PORT, () => {
+const initDB = async () => {
+    const db = require('./config/db');
+    try {
+        console.log('🔄 Checking database schema...');
+        const columns = [
+            { table: 'employees', column: 'custom_id', type: 'VARCHAR(100) DEFAULT ""' },
+            { table: 'employees', column: 'uif_number', type: 'VARCHAR(100) DEFAULT ""' },
+            { table: 'employees', column: 'advance_balance', type: 'DECIMAL(10,2) DEFAULT 0.00' },
+            { table: 'employees', column: 'signature', type: 'LONGTEXT' },
+            { table: 'employees', column: 'created_by', type: 'INT' },
+            { table: 'users', column: 'created_by', type: 'INT' },
+            { table: 'payroll', column: 'advance_deduction', type: 'DECIMAL(10,2) DEFAULT 0.00' },
+            { table: 'payroll', column: 'uif_amount', type: 'DECIMAL(10,2) DEFAULT 0.00' },
+            { table: 'payroll', column: 'shifts_data', type: 'JSON' }
+        ];
+
+        for (const col of columns) {
+            try {
+                await db.execute(`ALTER TABLE ${col.table} ADD COLUMN ${col.column} ${col.type}`);
+                console.log(`✅ Added column ${col.column} to ${col.table}`);
+            } catch (err) {
+                // Ignore if already exists
+            }
+        }
+        console.log('✅ Database schema check complete');
+    } catch (err) {
+        console.error('❌ DB Init failed:', err.message);
+    }
+};
+
+server.listen(PORT, async () => {
+    await initDB();
     console.log(`🚀 Server running on port ${PORT}`);
 });

@@ -11,6 +11,30 @@ const profileController = require('../controllers/profile');
 const settingsController = require('../controllers/settings');
 
 const auth = require('../middleware/auth');
+const multer = require('multer');
+const path = require('path');
+
+// Multer Storage Config
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, 'uploads/');
+    },
+    filename: (req, file, cb) => {
+        cb(null, `${Date.now()}-${file.originalname}`);
+    }
+});
+
+const upload = multer({
+    storage,
+    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+    fileFilter: (req, file, cb) => {
+        const filetypes = /jpeg|jpg|png/;
+        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = filetypes.test(file.mimetype);
+        if (mimetype && extname) return cb(null, true);
+        cb(new Error('Only JPG and PNG images are allowed'));
+    }
+});
 
 // ================= AUTH =================
 router.post('/login', authController.login);
@@ -21,9 +45,10 @@ router.put('/profile', auth, profileController.updateProfile);
 
 // ================= EMPLOYEES =================
 router.get('/employees', auth, employeeController.getAllEmployees);
-router.post('/employees', auth, employeeController.addEmployee);
+router.post('/employees', auth, upload.single('profileImage'), employeeController.addEmployee);
 router.get('/employees/:id', auth, employeeController.getEmployeeById);
-router.put('/employees/:id', auth, employeeController.updateEmployee);
+
+router.put('/employees/:id', auth, upload.single('profileImage'), employeeController.updateEmployee);
 router.delete('/employees/:id', auth, employeeController.deleteEmployee);
 
 // ================= ATTENDANCE =================
