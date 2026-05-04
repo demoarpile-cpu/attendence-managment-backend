@@ -8,6 +8,19 @@ const profileController = require('../controllers/profile');
 const settingsController = require('../controllers/settings');
 const authController = require('../controllers/auth');
 
+const multer = require('multer');
+const path = require('path');
+
+// Multer Storage Configuration
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, 'uploads/'),
+    filename: (req, file, cb) => cb(null, `profile-${Date.now()}${path.extname(file.originalname)}`)
+});
+const upload = multer({ 
+    storage,
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
+
 // Auth
 router.post('/login', authController.login);
 
@@ -18,8 +31,8 @@ router.put('/profile', auth, profileController.updateProfile);
 // Employees
 router.get('/employees', auth, employeeController.getAllEmployees);
 router.get('/employees/:id', auth, employeeController.getEmployeeById);
-router.post('/employees', auth, employeeController.addEmployee);
-router.put('/employees/:id', auth, employeeController.updateEmployee);
+router.post('/employees', auth, upload.single('profileImage'), employeeController.addEmployee);
+router.put('/employees/:id', auth, upload.single('profileImage'), employeeController.updateEmployee);
 router.delete('/employees/:id', auth, employeeController.deleteEmployee);
 
 // Attendance
