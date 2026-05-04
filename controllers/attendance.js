@@ -119,33 +119,34 @@ exports.updateAttendance = async (req, res) => {
     const { id } = req.params;
     const { in_time, out_time, status } = req.body;
     try {
-        // Safety: Verify admin owns this attendance record via employee
+        // Safety: Verify admin ownership (Allow NULL for legacy data)
         const [existing] = await db.execute('SELECT e.created_by FROM attendance a JOIN employees e ON a.employee_id = e.id WHERE a.id = ?', [id]);
-        if (existing.length > 0 && req.user.role === 'admin' && existing[0].created_by !== req.user.id) {
+        if (existing.length > 0 && req.user.role === 'admin' && existing[0].created_by !== req.user.id && existing[0].created_by !== null) {
             return res.status(403).json({ message: 'Cannot update record' });
         }
 
+        // Normalize datetime-local format or ISO strings to MySQL format ("2026-05-04 13:30:00")
+        const normalize = (dt) => {
+            if (!dt) return null;
+            return dt.replace('T', ' ').replace(/\.\d+Z$/, '').substring(0, 19);
+        };
+        const fIn = normalize(in_time);
+        const fOut = normalize(out_time);
+        
+        // Calculate hours robustly using timestamps
         let totalHours = 0;
-        if (in_time && out_time) {
-            const inDate = new Date(in_time);
-            const outDate = new Date(out_time);
-            if (!isNaN(inDate.getTime()) && !isNaN(outDate.getTime())) {
-                const diff = outDate - inDate;
-                totalHours = Math.max(0, (diff / (1000 * 60 * 60))).toFixed(2);
-            }
+        if (fIn && fOut) {
+            const diff = new Date(fOut.replace(' ', 'T')) - new Date(fIn.replace(' ', 'T'));
+            totalHours = Math.max(0, (diff / (1000 * 60 * 60))).toFixed(2);
         }
         
         const finalStatus = status ? status.toLowerCase() : 'present';
-        // Normalize datetime-local format or ISO strings to MySQL format ("2026-05-04 13:30:00")
-        const normalizeDateTime = (dt) => {
-            if (!dt) return null;
-            // Remove 'T' and strip milliseconds/timezone (e.g., .000Z)
-            return dt.replace('T', ' ').replace(/\.\d+Z$/, '').substring(0, 19);
-        };
-        const formattedIn = normalizeDateTime(in_time);
-        const formattedOut = normalizeDateTime(out_time);
-        
-        await db.execute('UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ? WHERE id = ?', [formattedIn, formattedOut, finalStatus, totalHours, id]);
+        const finalDate = fIn ? fIn.split(' ')[0] : null; // Extract date from in_time
+
+        await db.execute(
+            'UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ?, date = ? WHERE id = ?', 
+            [fIn, fOut, finalStatus, totalHours, finalDate, id]
+        );
         res.json({ message: 'Updated' });
     } catch (err) {
         res.status(500).json({ message: 'Failed', error: err.message });
@@ -160,10 +161,13 @@ exports.bulkMarkAttendance = async (req, res) => {
         
         let fIn = `${date} ${finalIn}:00`;
         let fOut = `${date} ${finalOut}:00`;
-        let totalHours = ((new Date(fOut) - new Date(fIn)) / (1000 * 60 * 60)).toFixed(2);
+        
+        // Calculate hours robustly
+        const diff = new Date(fOut.replace(' ', 'T')) - new Date(fIn.replace(' ', 'T'));
+        const totalHours = Math.max(0, (diff / (1000 * 60 * 60))).toFixed(2);
 
         for (let empId of employeeIds) {
-            // Safety: Verify admin ownership (allow NULL for legacy/manual data)
+            // Safety: Verify admin ownership (Allow NULL for manual/legacy data)
             const [emp] = await db.execute('SELECT created_by FROM employees WHERE id = ?', [empId]);
             if (emp.length > 0 && req.user.role === 'admin' && emp[0].created_by !== req.user.id && emp[0].created_by !== null) continue;
 
