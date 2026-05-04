@@ -136,12 +136,11 @@ exports.updateAttendance = async (req, res) => {
         }
         
         const finalStatus = status ? status.toLowerCase() : 'present';
-        // Normalize datetime-local format ("2026-05-04T13:30") to MySQL format ("2026-05-04 13:30:00")
+        // Normalize datetime-local format or ISO strings to MySQL format ("2026-05-04 13:30:00")
         const normalizeDateTime = (dt) => {
             if (!dt) return null;
-            // Handle "YYYY-MM-DDTHH:mm" or "YYYY-MM-DD HH:mm" or "YYYY-MM-DD HH:mm:ss"
-            const normalized = dt.replace('T', ' ');
-            return normalized.length === 16 ? normalized + ':00' : normalized;
+            // Remove 'T' and strip milliseconds/timezone (e.g., .000Z)
+            return dt.replace('T', ' ').replace(/\.\d+Z$/, '').substring(0, 19);
         };
         const formattedIn = normalizeDateTime(in_time);
         const formattedOut = normalizeDateTime(out_time);
@@ -156,7 +155,6 @@ exports.updateAttendance = async (req, res) => {
 exports.bulkMarkAttendance = async (req, res) => {
     const { employeeIds, date, status, inTime, outTime } = req.body;
     try {
-        // Set default times if not provided: 8am and 5pm
         const finalIn = inTime || '08:00';
         const finalOut = outTime || '17:00';
         
@@ -165,9 +163,9 @@ exports.bulkMarkAttendance = async (req, res) => {
         let totalHours = ((new Date(fOut) - new Date(fIn)) / (1000 * 60 * 60)).toFixed(2);
 
         for (let empId of employeeIds) {
-            // Check ownership
+            // Safety: Verify admin ownership (allow NULL for legacy/manual data)
             const [emp] = await db.execute('SELECT created_by FROM employees WHERE id = ?', [empId]);
-            if (emp.length > 0 && req.user.role === 'admin' && emp[0].created_by !== req.user.id) continue;
+            if (emp.length > 0 && req.user.role === 'admin' && emp[0].created_by !== req.user.id && emp[0].created_by !== null) continue;
 
             const [existing] = await db.execute('SELECT id FROM attendance WHERE employee_id = ? AND date = ?', [empId, date]);
             if (existing.length > 0) {
