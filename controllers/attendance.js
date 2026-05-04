@@ -62,16 +62,18 @@ exports.getAttendance = async (req, res) => {
     }
 };
 
-// Process Raw Logs (Machine logs might need to be filtered or globally processed)
-exports.processLogs = async (req, res) => {
-    try {
-        const [rawLogs] = await db.execute('SELECT * FROM raw_logs WHERE is_processed = FALSE ORDER BY punch_time ASC');
-        if (rawLogs.length === 0) return res.json({ message: 'No new logs' });
+// Internal helper for background processing
+const processAllRawLogs = async () => {
+    const [rawLogs] = await db.execute('SELECT * FROM raw_logs WHERE is_processed = FALSE ORDER BY punch_time ASC');
+    if (rawLogs.length === 0) return { success: true, count: 0 };
 
-        for (let log of rawLogs) {
-            const date = log.punch_time.toISOString().split('T')[0];
-            const [emps] = await db.execute('SELECT id FROM employees WHERE machine_id = ?', [log.machine_user_id]);
-            if (emps.length === 0) continue;
+    let count = 0;
+    for (let log of rawLogs) {
+        // Since we enabled dateStrings: true, punch_time is a string. We might need to split it.
+        const date = log.punch_time.split(' ')[0];
+        const [emps] = await db.execute('SELECT id FROM employees WHERE machine_id = ?', [log.machine_user_id]);
+        
+        if (emps.length > 0) {
             const employeeId = emps[0].id;
             const [existing] = await db.execute('SELECT * FROM attendance WHERE employee_id = ? AND date = ?', [employeeId, date]);
 
@@ -81,13 +83,29 @@ exports.processLogs = async (req, res) => {
                 const inTime = new Date(existing[0].in_time);
                 const outTime = new Date(log.punch_time);
                 const diffMs = outTime - inTime;
-                const hours = (diffMs / (1000 * 60 * 60)).toFixed(2);
-                await db.execute('UPDATE attendance SET out_time = ?, total_hours = ? WHERE id = ?', [log.punch_time, hours, existing[0].id]);
+                
+                // Only update if it's actually later than current out_time or in_time
+                if (diffMs > 0) {
+                    const hours = (diffMs / (1000 * 60 * 60)).toFixed(2);
+                    await db.execute('UPDATE attendance SET out_time = ?, total_hours = ? WHERE id = ?', [log.punch_time, hours, existing[0].id]);
+                }
             }
-            await db.execute('UPDATE raw_logs SET is_processed = TRUE WHERE id = ?', [log.id]);
+            count++;
         }
-        res.json({ message: 'Logs processed' });
+        await db.execute('UPDATE raw_logs SET is_processed = TRUE WHERE id = ?', [log.id]);
+    }
+    return { success: true, count };
+};
+
+exports.processAllRawLogs = processAllRawLogs;
+
+// Process Raw Logs (API Route)
+exports.processLogs = async (req, res) => {
+    try {
+        const result = await processAllRawLogs();
+        res.json({ message: result.count > 0 ? 'Logs processed' : 'No new logs', count: result.count });
     } catch (err) {
+        console.error('Processing failed:', err);
         res.status(500).json({ message: 'Processing failed', error: err.message });
     }
 };
