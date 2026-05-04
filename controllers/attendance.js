@@ -117,7 +117,7 @@ exports.addManualAttendance = async (req, res) => {
         }
 
         const query = 'INSERT INTO attendance (employee_id, date, in_time, out_time, total_hours, status) VALUES (?, ?, ?, ?, ?, ?)';
-        await db.execute(query, [employeeId, date, formattedIn, formattedOut, totalHours, status || 'present']);
+        await db.execute(query, [employeeId, date, formattedIn || null, formattedOut || null, totalHours || 0, status || 'present']);
         
         res.json({ message: 'Manual attendance added successfully' });
     } catch (err) {
@@ -139,7 +139,7 @@ exports.updateAttendance = async (req, res) => {
 
         await db.execute(
             'UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ? WHERE id = ?',
-            [in_time, out_time, status, totalHours, id]
+            [in_time || null, out_time || null, status || 'present', totalHours || 0, id]
         );
         res.json({ message: 'Attendance updated successfully' });
     } catch (err) {
@@ -172,12 +172,12 @@ exports.bulkMarkAttendance = async (req, res) => {
             if (existing.length > 0) {
                 await db.execute(
                     'UPDATE attendance SET status = ?, in_time = ?, out_time = ?, total_hours = ? WHERE id = ?', 
-                    [status, formattedIn, formattedOut, totalHours, existing[0].id]
+                    [status || 'present', formattedIn || null, formattedOut || null, totalHours || 0, existing[0].id]
                 );
             } else {
                 await db.execute(
                     'INSERT INTO attendance (employee_id, date, status, in_time, out_time, total_hours) VALUES (?, ?, ?, ?, ?, ?)', 
-                    [empId, date, status, formattedIn, formattedOut, totalHours]
+                    [empId, date, status || 'present', formattedIn || null, formattedOut || null, totalHours || 0]
                 );
             }
         }

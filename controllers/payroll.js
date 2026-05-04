@@ -78,6 +78,9 @@ exports.updatePayrollStatus = async (req, res) => {
     const { status } = req.body;
 
     try {
+        if (!status || !id) {
+            return res.status(400).json({ message: 'Missing status or id' });
+        }
         await db.execute('UPDATE payroll SET status = ? WHERE id = ?', [status, id]);
         res.json({ message: `Payroll marked as ${status}` });
     } catch (err) {

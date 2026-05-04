@@ -11,17 +11,15 @@ const server = http.createServer(app);
 
 // ================= CORS CONFIG =================
 const corsOptions = {
-    origin: [
-        "https://attendence.softwaredemolive.live"
-    ],
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true
 };
 
 // ================= SOCKET.IO =================
 const io = new Server(server, {
     cors: {
-        origin: "https://attendence.softwaredemolive.live",
+        origin: (origin, callback) => callback(null, true),
         methods: ["GET", "POST"],
         credentials: true
     }

@@ -21,16 +21,36 @@ exports.updateProfile = async (req, res) => {
         const userId = req.user.id;
         const { name, email, role, password, photo } = req.body;
 
-        let query = 'UPDATE users SET name = ?, email = ?, role = ?, photo = ?';
-        let params = [name, email, role, photo];
+        const updates = [];
+        const params = [];
 
+        if (name !== undefined) {
+            updates.push('name = ?');
+            params.push(name);
+        }
+        if (email !== undefined) {
+            updates.push('email = ?');
+            params.push(email);
+        }
+        if (role !== undefined) {
+            updates.push('role = ?');
+            params.push(role);
+        }
+        if (photo !== undefined) {
+            updates.push('photo = ?');
+            params.push(photo);
+        }
         if (password) {
             const hashedPassword = await bcrypt.hash(password, 10);
-            query += ', password = ?';
+            updates.push('password = ?');
             params.push(hashedPassword);
         }
 
-        query += ' WHERE id = ?';
+        if (updates.length === 0) {
+            return res.status(400).json({ message: 'No fields to update' });
+        }
+
+        const query = `UPDATE users SET ${updates.join(', ')} WHERE id = ?`;
         params.push(userId);
 
         await db.execute(query, params);

@@ -101,7 +101,20 @@ exports.updateEmployee = async (req, res) => {
         // 1. Update employees table
         await db.execute(
             'UPDATE employees SET machine_id = ?, name = ?, role = ?, department = ?, shift = ?, email = ?, phone = ?, salary_rate = ?, salary_type = ?, joined_date = ?, photo = ? WHERE id = ?',
-            [machine_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, id]
+            [
+                machine_id || null, 
+                name || null, 
+                role || '', 
+                department || 'General', 
+                shift || 'Morning Shift', 
+                email || '', 
+                phone || '', 
+                salary_rate || 0, 
+                salary_type || 'hourly', 
+                joined_date || null, 
+                photo || null, 
+                id
+            ]
         );
 
         // 2. Update users table if email, name or password provided

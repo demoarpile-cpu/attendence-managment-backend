@@ -24,7 +24,15 @@ exports.updateSettings = async (req, res) => {
     try {
         await db.execute(
             'UPDATE settings SET machine_ip = ?, machine_port = ?, machine_alias = ?, sync_interval = ?, late_deduction = ?, salary_cycle = ?, ot_multiplier = ? WHERE id = 1',
-            [machine_ip, machine_port, machine_alias, sync_interval, late_deduction ? 1 : 0, salary_cycle, ot_multiplier]
+            [
+                machine_ip || null, 
+                machine_port || 4370, 
+                machine_alias || '', 
+                sync_interval || 30, 
+                late_deduction ? 1 : 0, 
+                salary_cycle || '15 Days Cycle', 
+                ot_multiplier || 1.5
+            ]
         );
         res.json({ message: 'Settings updated successfully' });
     } catch (err) {
