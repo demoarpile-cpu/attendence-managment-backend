@@ -1,70 +1,53 @@
 const db = require('../config/db');
 
 exports.generatePayroll = async (req, res) => {
-    const { startDate, endDate } = req.body;
-
+    const { employeeIds, cycleStart, cycleEnd } = req.body;
     try {
-        // 1. Get employees (Filtered by creator if admin)
-        let query = 'SELECT id, name, salary_rate, salary_type, advance_balance FROM employees WHERE status = "active"';
-        let params = [];
-
-        if (req.user.role === 'admin') {
-            query += ' AND created_by = ?';
-            params.push(req.user.id);
-        }
-
-        const [employees] = await db.execute(query, params);
-
-        // 2. Get settings for deduction rules
-        const [settings] = await db.execute('SELECT late_deduction FROM settings LIMIT 1');
-        const latePenaltyAmount = 100; // Default penalty per late mark
-
-        for (let emp of employees) {
-            // 3. Get attendance data for the period
-            const [attendance] = await db.execute(
-                'SELECT SUM(total_hours) as total_hours, COUNT(IF(status = "late", 1, NULL)) as late_count FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?',
-                [emp.id, startDate, endDate]
-            );
-
-            const totalHours = attendance[0].total_hours || 0;
-            const lateCount = attendance[0].late_count || 0;
+        const results = [];
+        for (const empId of employeeIds) {
+            const [empCheck] = await db.execute('SELECT created_by, salary_rate, salary_type FROM employees WHERE id = ?', [empId]);
+            if (empCheck.length > 0 && req.user.role === 'admin' && empCheck[0].created_by !== req.user.id) continue;
             
-            let baseSalary = 0;
-            if (emp.salary_type === 'hourly') {
-                baseSalary = totalHours * emp.salary_rate;
-            } else {
-                const [days] = await db.execute(
-                    'SELECT COUNT(*) as days FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?',
-                    [emp.id, startDate, endDate]
-                );
-                baseSalary = days[0].days * emp.salary_rate;
-            }
-
-            const uifAmount = baseSalary * 0.01;
-
-            let lateDeductions = 0;
-            if (settings[0]?.late_deduction) {
-                lateDeductions = lateCount * latePenaltyAmount;
-            }
-
-            const advanceToDeduct = Math.min(emp.advance_balance || 0, baseSalary - lateDeductions - uifAmount);
-            const netSalary = baseSalary - lateDeductions - uifAmount - advanceToDeduct;
-
-            await db.execute('DELETE FROM payroll WHERE employee_id = ? AND cycle_start = ? AND cycle_end = ?', [emp.id, startDate, endDate]);
-
-            await db.execute(
-                'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, base_salary, deductions, uif_amount, advance_deduction, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [emp.id, startDate, endDate, totalHours, baseSalary, lateDeductions, uifAmount, advanceToDeduct, netSalary, 'pending']
+            const employee = empCheck[0];
+            const [attendance] = await db.execute(
+                'SELECT status, total_hours FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?',
+                [empId, cycleStart, cycleEnd]
             );
 
-            if (advanceToDeduct > 0) {
-                await db.execute('UPDATE employees SET advance_balance = advance_balance - ? WHERE id = ?', [advanceToDeduct, emp.id]);
+            let totalHours = 0;
+            let presentDays = 0;
+            attendance.forEach(a => {
+                totalHours += parseFloat(a.total_hours || 0);
+                if (a.status === 'present' || a.status === 'late') presentDays++;
+            });
+
+            const rate = parseFloat(employee.salary_rate || 0);
+            let grossEarnings = 0;
+            if (employee.salary_type === 'hourly') grossEarnings = totalHours * rate;
+            else if (employee.salary_type === 'daily') grossEarnings = presentDays * rate;
+
+            const uif = grossEarnings * 0.01;
+            const netSalary = grossEarnings - uif;
+
+            const [existing] = await db.execute('SELECT id FROM payroll WHERE employee_id = ? AND cycle_start = ? AND cycle_end = ?', [empId, cycleStart, cycleEnd]);
+            
+            if (existing.length > 0) {
+                await db.execute(
+                    'UPDATE payroll SET total_hours = ?, gross_earnings = ?, uif_amount = ?, net_salary = ?, status = "pending" WHERE id = ?',
+                    [totalHours, grossEarnings, uif, netSalary, existing[0].id]
+                );
+                results.push({ empId, action: 'updated' });
+            } else {
+                await db.execute(
+                    'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, gross_earnings, uif_amount, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, "pending")',
+                    [empId, cycleStart, cycleEnd, totalHours, grossEarnings, uif, netSalary]
+                );
+                results.push({ empId, action: 'created' });
             }
         }
-
-        res.json({ message: 'Payroll generated successfully' });
+        res.json({ message: 'Payroll generation complete', results });
     } catch (err) {
-        res.status(500).json({ message: 'Payroll generation failed', error: err.message });
+        res.status(500).json({ message: 'Generation failed', error: err.message });
     }
 };
 
@@ -85,50 +68,70 @@ exports.getPayrollHistory = async (req, res) => {
         const [rows] = await db.execute(query, params);
 
         const enhancedRows = await Promise.all(rows.map(async (p) => {
-            const [shifts] = await db.execute(
-                'SELECT date, total_hours FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?',
-                [p.employee_id, p.cycle_start, p.cycle_end]
-            );
+            // Safety: Avoid 'undefined' in query if columns are missing
+            const start = p.cycle_start || null;
+            const end = p.cycle_end || null;
+            
+            let shifts = [];
+            if (start && end) {
+                const [shiftRows] = await db.execute(
+                    'SELECT date, total_hours FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?',
+                    [p.employee_id, start, end]
+                );
+                shifts = shiftRows;
+            }
 
-            const shiftDetails = shifts.map(s => {
-                let earning = 0;
-                if (p.salary_type === 'hourly') {
-                    earning = s.total_hours * p.salary_rate;
-                } else {
-                    earning = p.salary_rate;
-                }
-                const uif = (earning * 0.01).toFixed(2);
-                return {
-                    date: s.date,
-                    earning: earning.toFixed(2),
-                    uif: parseFloat(uif)
-                };
-            });
-
-            return { ...p, shifts: shiftDetails, totalUIF: p.uif_amount };
+            return {
+                ...p,
+                shifts_data: shifts,
+                totalEarnings: p.gross_earnings || 0,
+                totalUIF: p.uif_amount || 0,
+                netSalary: p.net_salary || 0
+            };
         }));
 
         res.json(enhancedRows);
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Error fetching payroll' });
+        console.error('Payroll fetch error:', err);
+        res.status(500).json({ message: 'Error fetching payroll', error: err.message });
+    }
+};
+
+exports.getPayrollById = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const [rows] = await db.execute(
+            'SELECT p.*, e.name, e.photo, e.role, e.department, e.salary_rate, e.salary_type FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.id = ?',
+            [id]
+        );
+        if (rows.length === 0) return res.status(404).json({ message: 'Not found' });
+        
+        const p = rows[0];
+        const start = p.cycle_start || null;
+        const end = p.cycle_end || null;
+        let shifts = [];
+        
+        if (start && end) {
+            const [shiftRows] = await db.execute(
+                'SELECT date, total_hours, in_time, out_time, status FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?',
+                [p.employee_id, start, end]
+            );
+            shifts = shiftRows;
+        }
+        
+        res.json({ ...p, shifts_data: shifts });
+    } catch (err) {
+        res.status(500).json({ message: 'Error', error: err.message });
     }
 };
 
 exports.updatePayrollStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
-
     try {
-        // Safety: If admin, verify ownership
-        const [existing] = await db.execute('SELECT e.created_by FROM payroll p JOIN employees e ON p.employee_id = e.id WHERE p.id = ?', [id]);
-        if (existing.length > 0 && req.user.role === 'admin' && existing[0].created_by !== req.user.id) {
-            return res.status(403).json({ message: 'Cannot update payroll for staff added by another admin' });
-        }
-
         await db.execute('UPDATE payroll SET status = ? WHERE id = ?', [status, id]);
-        res.json({ message: `Payroll marked as ${status}` });
+        res.json({ message: 'Status updated' });
     } catch (err) {
-        res.status(500).json({ message: 'Error updating payroll status', error: err.message });
+        res.status(500).json({ message: 'Update failed', error: err.message });
     }
 };
