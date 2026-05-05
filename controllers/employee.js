@@ -153,38 +153,48 @@ exports.updateEmployee = async (req, res) => {
         );
 
         // 2. Update users table (Only if relevant fields are provided)
-        if (email || name || password || role) {
-            let updates = [];
-            let params = [];
-            
-            if (email) {
-                updates.push('email = ?');
-                params.push(email);
-            }
-            if (name) {
-                updates.push('name = ?');
-                params.push(name);
-            }
-            if (password) {
-                const hashedPassword = await bcrypt.hash(password, 10);
-                updates.push('password = ?');
-                params.push(hashedPassword);
-            }
-            if (role) {
-                const finalRole = role === 'admin' ? 'admin' : 'employee';
-                updates.push('role = ?');
-                params.push(finalRole);
-            }
-            
-            if (updates.length > 0) {
-                const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE employee_id = ?`;
-                params.push(id);
-                await db.execute(updateQuery, params);
+        if (email || name || password || role || photo) {
+            try {
+                let updates = [];
+                let params = [];
+                
+                if (email) {
+                    updates.push('email = ?');
+                    params.push(email);
+                }
+                if (name) {
+                    updates.push('name = ?');
+                    params.push(name);
+                }
+                if (password) {
+                    const hashedPassword = await bcrypt.hash(password, 10);
+                    updates.push('password = ?');
+                    params.push(hashedPassword);
+                }
+                if (role) {
+                    const finalRole = role === 'admin' ? 'admin' : 'employee';
+                    updates.push('role = ?');
+                    params.push(finalRole);
+                }
+                if (photo) {
+                    updates.push('photo = ?');
+                    params.push(photo);
+                }
+                
+                if (updates.length > 0) {
+                    const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE employee_id = ?`;
+                    params.push(id);
+                    await db.execute(updateQuery, params);
+                }
+            } catch (userUpdateErr) {
+                console.error('⚠️ Failed to sync user record:', userUpdateErr.message);
+                // We don't throw here so employee update still finishes
             }
         }
 
         res.json({ message: 'Record updated successfully' });
     } catch (err) {
+        console.error('❌ Update Employee Error:', err);
         res.status(500).json({ message: 'Error updating record', error: err.message });
     }
 };
