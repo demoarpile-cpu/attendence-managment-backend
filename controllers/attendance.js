@@ -210,8 +210,11 @@ exports.bulkMarkAttendance = async (req, res) => {
 
 exports.getDashboardStats = async (req, res) => {
     try {
-        const today = new Date().toISOString().split('T')[0];
         const now = new Date();
+        const offset = now.getTimezoneOffset();
+        const localToday = new Date(now.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
+        
+        const today = req.query.date || localToday;
         const cycleStart = now.getDate() <= 15 ? 1 : 16;
         const cycleEnd = now.getDate() <= 15 ? 15 : 31;
         const cycleStartDate = new Date(now.getFullYear(), now.getMonth(), cycleStart).toISOString().split('T')[0];
