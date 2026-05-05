@@ -19,6 +19,7 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
     try {
         const userId = req.user.id;
+        const employeeId = req.user.employee_id;
         const { name, email, role, password, photo } = req.body;
 
         const updates = [];
@@ -54,6 +55,21 @@ exports.updateProfile = async (req, res) => {
         params.push(userId);
 
         await db.execute(query, params);
+
+        // SYNC: If this user is an employee, sync name and photo back to employees table
+        if (employeeId) {
+            const empUpdates = [];
+            const empParams = [];
+            if (name !== undefined) { empUpdates.push('name = ?'); empParams.push(name); }
+            if (photo !== undefined) { empUpdates.push('photo = ?'); empParams.push(photo); }
+            if (email !== undefined) { empUpdates.push('email = ?'); empParams.push(email); }
+            
+            if (empUpdates.length > 0) {
+                const empQuery = `UPDATE employees SET ${empUpdates.join(', ')} WHERE id = ?`;
+                empParams.push(employeeId);
+                await db.execute(empQuery, empParams);
+            }
+        }
 
         res.json({ message: 'Profile updated successfully' });
     } catch (err) {
