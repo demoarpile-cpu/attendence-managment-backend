@@ -55,14 +55,14 @@ exports.generatePayroll = async (req, res) => {
             
             if (existing.length > 0) {
                 await db.execute(
-                    'UPDATE payroll SET total_hours = ?, gross_earnings = ?, uif_amount = ?, advance_deduction = ?, net_salary = ?, status = "pending" WHERE id = ?',
-                    [totalHours, grossEarnings, uif, advance, netSalary, existing[0].id]
+                    'UPDATE payroll SET total_hours = ?, gross_earnings = ?, base_salary = ?, deductions = 0, uif_amount = ?, advance_deduction = ?, net_salary = ?, status = "pending" WHERE id = ?',
+                    [totalHours, grossEarnings, rate, uif, advance, netSalary, existing[0].id]
                 );
                 results.push({ empId, action: 'updated' });
             } else {
                 await db.execute(
-                    'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, gross_earnings, uif_amount, advance_deduction, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, "pending")',
-                    [empId, start, end, totalHours, grossEarnings, uif, advance, netSalary]
+                    'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, gross_earnings, base_salary, deductions, uif_amount, advance_deduction, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending")',
+                    [empId, start, end, totalHours, grossEarnings, rate, 0, uif, advance, netSalary]
                 );
                 results.push({ empId, action: 'created' });
             }
