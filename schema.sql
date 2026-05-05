@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS settings (
     salary_cycle    VARCHAR(50) DEFAULT '15 Days Cycle',
     ot_multiplier   DECIMAL(4,2) DEFAULT 1.50,
     business_name   VARCHAR(150) DEFAULT 'BioTrack Pro',
-    business_address TEXT DEFAULT '',
+    business_address TEXT,
     business_phone  VARCHAR(50) DEFAULT '',
     business_email  VARCHAR(150) DEFAULT '',
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

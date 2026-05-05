@@ -109,6 +109,9 @@ exports.updateEmployee = async (req, res) => {
         uif_number, advance_balance, eSignature, status, password, is_uif_registered 
     } = req.body;
 
+    // Handle stringified booleans from FormData
+    const isUif = is_uif_registered === 'true' || is_uif_registered === true || is_uif_registered === 1 || is_uif_registered === '1';
+
     // Use uploaded file if present
     let photo = req.body.photo;
     if (req.file) {
@@ -144,32 +147,40 @@ exports.updateEmployee = async (req, res) => {
                 advance_balance || 0, 
                 eSignature || null,
                 status || 'active',
-                is_uif_registered === undefined ? 1 : (is_uif_registered ? 1 : 0),
+                isUif ? 1 : 0,
                 id
             ]
         );
 
-        // 2. Update users table
+        // 2. Update users table (Only if relevant fields are provided)
         if (email || name || password || role) {
-            let updateQuery = 'UPDATE users SET email = ?, name = ?';
-            let params = [email, name];
+            let updates = [];
+            let params = [];
             
+            if (email) {
+                updates.push('email = ?');
+                params.push(email);
+            }
+            if (name) {
+                updates.push('name = ?');
+                params.push(name);
+            }
             if (password) {
                 const hashedPassword = await bcrypt.hash(password, 10);
-                updateQuery += ', password = ?';
+                updates.push('password = ?');
                 params.push(hashedPassword);
             }
-            
             if (role) {
                 const finalRole = role === 'admin' ? 'admin' : 'employee';
-                updateQuery += ', role = ?';
+                updates.push('role = ?');
                 params.push(finalRole);
             }
             
-            updateQuery += ' WHERE employee_id = ?';
-            params.push(id);
-            
-            await db.execute(updateQuery, params);
+            if (updates.length > 0) {
+                const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE employee_id = ?`;
+                params.push(id);
+                await db.execute(updateQuery, params);
+            }
         }
 
         res.json({ message: 'Record updated successfully' });
