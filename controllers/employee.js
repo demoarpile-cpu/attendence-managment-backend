@@ -132,29 +132,34 @@ exports.updateEmployee = async (req, res) => {
 
         empFields.forEach(field => {
             if (data[field] !== undefined) {
-                empUpdates.push(`${field} = ?`);
-                empParams.push(data[field] === '' ? null : data[field]);
+                empUpdates.push(`\`${field}\` = ?`);
+                let val = data[field] === '' ? null : data[field];
+                // Ensure numeric fields are numbers or null
+                if (field === 'salary_rate' || field === 'advance_balance') {
+                    val = val !== null ? parseFloat(val) : 0;
+                }
+                empParams.push(val);
             }
         });
 
         if (photo !== undefined) {
-            empUpdates.push('photo = ?');
+            empUpdates.push('`photo` = ?');
             empParams.push(photo);
         }
 
         if (data.eSignature !== undefined) {
-            empUpdates.push('signature = ?');
+            empUpdates.push('`signature` = ?');
             empParams.push(data.eSignature);
         }
 
         if (data.is_uif_registered !== undefined) {
             const isUif = data.is_uif_registered === 'true' || data.is_uif_registered === true || data.is_uif_registered === 1 || data.is_uif_registered === '1';
-            empUpdates.push('is_uif_registered = ?');
+            empUpdates.push('`is_uif_registered` = ?');
             empParams.push(isUif ? 1 : 0);
         }
 
         if (data.joined_date) {
-            empUpdates.push('joined_date = ?');
+            empUpdates.push('`joined_date` = ?');
             empParams.push(data.joined_date.split('T')[0]);
         }
 
@@ -173,7 +178,7 @@ exports.updateEmployee = async (req, res) => {
         if (photo) { userUpdates.push('photo = ?'); userParams.push(photo); }
         if (data.role) { userUpdates.push('role = ?'); userParams.push(data.role === 'admin' ? 'admin' : 'employee'); }
         
-        if (data.password) {
+        if (data.password && data.password.trim() !== '') {
             const hashedPassword = await bcrypt.hash(data.password, 10);
             userUpdates.push('password = ?');
             userParams.push(hashedPassword);
@@ -192,6 +197,9 @@ exports.updateEmployee = async (req, res) => {
         res.json({ message: 'Record updated successfully' });
     } catch (err) {
         console.error('❌ Update Employee Error:', err);
+        if (err.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ message: 'Duplicate entry: Machine ID or Email already exists', error: err.message });
+        }
         res.status(500).json({ message: 'Error updating record', error: err.message });
     }
 };
