@@ -1,5 +1,8 @@
 const db = require('../config/db');
 
+// Helper: treat both 'admin' and 'Master Admin' as admin roles
+const isAdmin = (role) => role === 'admin' || role === 'Master Admin';
+
 exports.generatePayroll = async (req, res) => {
     let { employeeIds, cycleStart, cycleEnd, startDate, endDate } = req.body;
     
@@ -16,9 +19,14 @@ exports.generatePayroll = async (req, res) => {
 
         // 1. If no specific employees provided, get all active employees for this admin
         if (!employeeIds || (Array.isArray(employeeIds) && employeeIds.length === 0)) {
-            const sql = 'SELECT id FROM employees WHERE created_by = ? AND status = "active"';
-            console.log('📝 Executing SQL:', sql, 'Params:', [req.user.id]);
-            const [allEmp] = await db.execute(sql, [req.user.id]);
+            let allEmpSql = 'SELECT id FROM employees WHERE status = "active"';
+            const allEmpParams = [];
+            if (isAdmin(req.user.role) && req.user.role !== 'Master Admin') {
+                allEmpSql += ' AND created_by = ?';
+                allEmpParams.push(req.user.id);
+            }
+            console.log('📝 Executing SQL:', allEmpSql, 'Params:', allEmpParams);
+            const [allEmp] = await db.execute(allEmpSql, allEmpParams);
             employeeIds = allEmp.map(e => e.id);
         }
 
@@ -31,7 +39,8 @@ exports.generatePayroll = async (req, res) => {
             const [empCheck] = await db.execute(empSql, [empId]);
             
             if (empCheck.length === 0) continue;
-            if (req.user.role === 'admin' && empCheck[0].created_by !== req.user.id) continue;
+            // Skip if regular admin and doesn't own this employee
+            if (isAdmin(req.user.role) && req.user.role !== 'Master Admin' && empCheck[0].created_by !== req.user.id) continue;
             
             const employee = empCheck[0];
             const attSql = 'SELECT status, total_hours FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?';
@@ -113,7 +122,7 @@ exports.getPayrollHistory = async (req, res) => {
         if (req.user.role === 'employee') {
             query += ' WHERE p.employee_id = ?';
             params.push(req.user.employee_id);
-        } else if (req.user.role === 'admin') {
+        } else if (isAdmin(req.user.role) && req.user.role !== 'Master Admin') {
             query += ' WHERE e.created_by = ?';
             params.push(req.user.id);
         }

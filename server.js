@@ -125,6 +125,7 @@ const initDB = async () => {
                 machine_alias VARCHAR(100) DEFAULT 'Main Entrance',
                 sync_interval INT DEFAULT 30,
                 late_deduction TINYINT(1) DEFAULT 1,
+                late_deduction_amount DECIMAL(10,2) DEFAULT 50.00,
                 salary_cycle VARCHAR(50) DEFAULT '15 Days Cycle',
                 ot_multiplier DECIMAL(4,2) DEFAULT 1.50,
                 business_name VARCHAR(150) DEFAULT 'BioTrack Pro',
@@ -169,6 +170,9 @@ const initDB = async () => {
             { table: 'users', column: 'name', type: 'VARCHAR(100) DEFAULT ""' },
             { table: 'users', column: 'photo', type: 'TEXT' },
             { table: 'users', column: 'created_by', type: 'INT' },
+
+            // Attendance Table
+            { table: 'attendance', column: 'marked_by', type: 'INT DEFAULT NULL' },
             
             // Payroll Table
             { table: 'payroll', column: 'total_hours', type: 'DECIMAL(10,2) DEFAULT 0.00' },

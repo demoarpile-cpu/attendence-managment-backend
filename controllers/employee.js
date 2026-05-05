@@ -1,14 +1,17 @@
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 
+// Helper: check if a role string is any kind of admin
+const isAdmin = (role) => role === 'admin' || role === 'Master Admin';
+
 // Get all employees (Filtered by creator if admin)
 exports.getAllEmployees = async (req, res) => {
     try {
         let query = 'SELECT * FROM employees';
         let params = [];
 
-        // If admin, they only see staff they added
-        if (req.user.role === 'admin') {
+        // If regular admin (not Master Admin), they only see staff they added
+        if (isAdmin(req.user.role) && req.user.role !== 'Master Admin') {
             query += ' WHERE (created_by = ? OR created_by IS NULL)';
             params.push(req.user.id);
         }
@@ -45,8 +48,8 @@ exports.addEmployee = async (req, res) => {
         // 1. Insert into employees table
         const formattedJoinedDate = joined_date ? joined_date.split('T')[0] : new Date().toISOString().split('T')[0];
 
-        // Ensure role is valid for enum
-        const dbRole = (role === 'admin') ? 'admin' : 'employee';
+        // Ensure role is valid — map any admin variant to 'admin'
+        const dbRole = isAdmin(role) ? 'admin' : 'employee';
         const dbShift = ['Morning Shift', 'Evening Shift', 'Night Shift'].includes(shift) ? shift : 'Morning Shift';
         const dbSalaryType = ['hourly', 'daily'].includes(salary_type) ? salary_type : 'hourly';
 
@@ -77,8 +80,8 @@ exports.addEmployee = async (req, res) => {
         const employeeId = empResult.insertId;
         const hashedPassword = await bcrypt.hash(password || '123456', 10);
 
-        // 2. Create login user
-        const finalRole = role === 'admin' ? 'admin' : 'employee';
+        // 2. Create login user — map any admin variant to 'admin'
+        const finalRole = isAdmin(role) ? 'admin' : 'employee';
         const userSql = 'INSERT INTO users (employee_id, email, password, role, name, created_by) VALUES (?, ?, ?, ?, ?, ?)';
         const userValues = [employeeId, email || '', hashedPassword, finalRole, name || '', creatorId];
         
@@ -100,8 +103,8 @@ exports.getEmployeeById = async (req, res) => {
         const [rows] = await db.execute(sql, [req.params.id]);
         if (rows.length === 0) return res.status(404).json({ message: 'Not found' });
         
-        // Safety: If admin, check if they own this record
-        if (req.user.role === 'admin' && rows[0].created_by !== req.user.id) {
+        // Safety: If regular admin (not Master Admin), check if they own this record
+        if (isAdmin(req.user.role) && req.user.role !== 'Master Admin' && rows[0].created_by !== req.user.id) {
             return res.status(403).json({ message: 'Access denied to this record' });
         }
         
@@ -131,7 +134,7 @@ exports.updateEmployee = async (req, res) => {
         const [existing] = await db.execute('SELECT created_by FROM employees WHERE id = ?', [id]);
         if (existing.length === 0) return res.status(404).json({ message: 'Employee not found' });
         
-        if (req.user.role === 'admin' && existing[0].created_by !== req.user.id && existing[0].created_by !== null) {
+        if (isAdmin(req.user.role) && req.user.role !== 'Master Admin' && existing[0].created_by !== req.user.id && existing[0].created_by !== null) {
             return res.status(403).json({ message: 'Cannot edit staff added by another admin' });
         }
 
@@ -157,7 +160,7 @@ exports.updateEmployee = async (req, res) => {
                 }
 
                 // Map/Validate ENUM fields
-                if (field === 'role') val = (val === 'admin') ? 'admin' : 'employee';
+                if (field === 'role') val = isAdmin(val) ? 'admin' : 'employee';
                 if (field === 'shift') {
                     const validShifts = ['Morning Shift', 'Evening Shift', 'Night Shift'];
                     if (!validShifts.includes(val)) val = 'Morning Shift';
@@ -198,7 +201,7 @@ exports.updateEmployee = async (req, res) => {
         if (data.email) { userUpdates.push('email = ?'); userParams.push(data.email); }
         if (data.name) { userUpdates.push('name = ?'); userParams.push(data.name); }
         if (photo) { userUpdates.push('photo = ?'); userParams.push(photo); }
-        if (data.role) { userUpdates.push('role = ?'); userParams.push(data.role === 'admin' ? 'admin' : 'employee'); }
+        if (data.role) { userUpdates.push('role = ?'); userParams.push(isAdmin(data.role) ? 'admin' : 'employee'); }
         
         if (data.password && data.password.trim() !== '') {
             const hashedPassword = await bcrypt.hash(data.password, 10);
@@ -229,7 +232,7 @@ exports.deleteEmployee = async (req, res) => {
     try {
         // Safety: If admin, verify ownership
         const [existing] = await db.execute('SELECT created_by FROM employees WHERE id = ?', [id]);
-        if (existing.length > 0 && req.user.role === 'admin' && existing[0].created_by !== req.user.id) {
+        if (existing.length > 0 && isAdmin(req.user.role) && req.user.role !== 'Master Admin' && existing[0].created_by !== req.user.id) {
             return res.status(403).json({ message: 'Cannot delete records added by another admin' });
         }
 

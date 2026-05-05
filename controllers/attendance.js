@@ -1,5 +1,8 @@
 const db = require('../config/db');
 
+// Helper: treat both 'admin' and 'Master Admin' as admin roles
+const isAdmin = (role) => role === 'admin' || role === 'Master Admin';
+
 // Get attendance logs (Filtered by creator if admin)
 exports.getAttendance = async (req, res) => {
     const { date } = req.query;
@@ -33,8 +36,8 @@ exports.getAttendance = async (req, res) => {
         params.push(req.query.date_from, req.query.date_to);
     }
 
-    // Data Isolation for Multi-Admin
-    if (req.user.role === 'admin') {
+    // Data Isolation for Multi-Admin (skip for Master Admin)
+    if (isAdmin(req.user.role) && req.user.role !== 'Master Admin') {
         whereClauses.push('(e.created_by = ? OR e.created_by IS NULL)');
         params.push(req.user.id);
     }
@@ -127,7 +130,7 @@ exports.addManualAttendance = async (req, res) => {
     try {
         // Safety: Verify admin owns this employee
         const [emp] = await db.execute('SELECT created_by FROM employees WHERE id = ?', [employeeId]);
-        if (emp.length > 0 && req.user.role === 'admin' && emp[0].created_by !== req.user.id) {
+        if (emp.length > 0 && isAdmin(req.user.role) && req.user.role !== 'Master Admin' && emp[0].created_by !== req.user.id) {
             return res.status(403).json({ message: 'Cannot mark attendance for staff added by another admin' });
         }
 
@@ -157,7 +160,7 @@ exports.updateAttendance = async (req, res) => {
     try {
         // Safety: Verify admin ownership (Allow NULL for legacy data)
         const [existing] = await db.execute('SELECT e.created_by FROM attendance a JOIN employees e ON a.employee_id = e.id WHERE a.id = ?', [id]);
-        if (existing.length > 0 && req.user.role === 'admin' && existing[0].created_by !== req.user.id && existing[0].created_by !== null) {
+        if (existing.length > 0 && isAdmin(req.user.role) && req.user.role !== 'Master Admin' && existing[0].created_by !== req.user.id && existing[0].created_by !== null) {
             return res.status(403).json({ message: 'Cannot update record' });
         }
 
@@ -205,7 +208,7 @@ exports.bulkMarkAttendance = async (req, res) => {
         for (let empId of employeeIds) {
             // Safety: Verify admin ownership (Allow NULL for manual/legacy data)
             const [emp] = await db.execute('SELECT created_by FROM employees WHERE id = ?', [empId]);
-            if (emp.length > 0 && req.user.role === 'admin' && emp[0].created_by !== req.user.id && emp[0].created_by !== null) continue;
+            if (emp.length > 0 && isAdmin(req.user.role) && req.user.role !== 'Master Admin' && emp[0].created_by !== req.user.id && emp[0].created_by !== null) continue;
 
             const [existing] = await db.execute('SELECT id FROM attendance WHERE employee_id = ? AND date = ?', [empId, date]);
             if (existing.length > 0) {
@@ -240,7 +243,7 @@ exports.getDashboardStats = async (req, res) => {
         // 1. Fetch All Active Employees
         let empQuery = 'SELECT id, name, department, photo, role, salary_rate, salary_type FROM employees WHERE status = "active"';
         let empParams = [];
-        if (req.user.role === 'admin') {
+        if (isAdmin(req.user.role) && req.user.role !== 'Master Admin') {
             empQuery += ' AND (created_by = ? OR created_by IS NULL)';
             empParams.push(req.user.id);
         }
@@ -254,7 +257,7 @@ exports.getDashboardStats = async (req, res) => {
             WHERE a.date = ?
         `;
         let attParams = [today];
-        if (req.user.role === 'admin') {
+        if (isAdmin(req.user.role) && req.user.role !== 'Master Admin') {
             attQuery += ' AND (e.created_by = ? OR e.created_by IS NULL)';
             attParams.push(req.user.id);
         }
@@ -276,7 +279,7 @@ exports.getDashboardStats = async (req, res) => {
             AND (a.status = 'present' OR a.status = 'late')
         `;
         let cycleParams = [cycleStartDate, today];
-        if (req.user.role === 'admin') {
+        if (isAdmin(req.user.role) && req.user.role !== 'Master Admin') {
             cycleAttQuery += ' AND (e.created_by = ? OR e.created_by IS NULL)';
             cycleParams.push(req.user.id);
         }
@@ -307,7 +310,7 @@ exports.getDashboardStats = async (req, res) => {
                 WHERE a.date = ? AND (a.status = 'present' OR a.status = 'late')
             `;
             let trendParams = [dStr];
-            if (req.user.role === 'admin') {
+            if (isAdmin(req.user.role) && req.user.role !== 'Master Admin') {
                 trendQuery += ' AND (e.created_by = ? OR e.created_by IS NULL)';
                 trendParams.push(req.user.id);
             }
