@@ -10,6 +10,10 @@ exports.generatePayroll = async (req, res) => {
     try {
         if (!start || !end) return res.status(400).json({ message: 'Start and end dates are required' });
 
+        // Fetch global settings for rules
+        const [settingsRows] = await db.execute('SELECT * FROM settings WHERE id = 1');
+        const settings = settingsRows[0] || { ot_multiplier: 1.5, late_deduction: 1 };
+
         // 1. If no specific employees provided, get all active employees for this admin
         if (!employeeIds || (Array.isArray(employeeIds) && employeeIds.length === 0)) {
             const sql = 'SELECT id FROM employees WHERE created_by = ? AND status = "active"';
@@ -37,35 +41,59 @@ exports.generatePayroll = async (req, res) => {
 
             let totalHours = 0;
             let presentDays = 0;
+            let overtimeHours = 0;
+            let lateCount = 0;
+
             attendance.forEach(a => {
-                totalHours += parseFloat(a.total_hours || 0);
-                if (a.status === 'present' || a.status === 'late') presentDays++;
+                const h = parseFloat(a.total_hours || 0);
+                totalHours += h;
+                if (a.status === 'present' || a.status === 'late' || a.status === 'half_day') {
+                    presentDays++;
+                    // Assume 9 hours is standard shift. Anything above is OT.
+                    if (h > 9) overtimeHours += (h - 9);
+                    if (a.status === 'late') lateCount++;
+                }
             });
 
             const rate = parseFloat(employee.salary_rate || 0);
-            let grossEarnings = 0;
-            if (employee.salary_type === 'hourly') grossEarnings = totalHours * rate;
-            else if (employee.salary_type === 'daily') grossEarnings = presentDays * rate;
+            let baseEarnings = 0;
+            
+            if (employee.salary_type === 'hourly') {
+                // Base hours (total - overtime) + Overtime hours at multiplier
+                const normalHours = totalHours - overtimeHours;
+                const otMultiplier = parseFloat(settings.ot_multiplier) || 1.5;
+                baseEarnings = (normalHours * rate) + (overtimeHours * rate * otMultiplier);
+            } else if (employee.salary_type === 'daily') {
+                baseEarnings = presentDays * rate;
+                // For daily, maybe OT is still hourly? Let's add it on top if any.
+                const otMultiplier = parseFloat(settings.ot_multiplier) || 1.5;
+                baseEarnings += (overtimeHours * (rate / 9) * otMultiplier);
+            }
 
+            // Deductions logic
+            let deductions = 0;
+            if (settings.late_deduction && lateCount > 0) {
+                // Example: Deduct 50 per late if enabled
+                deductions = lateCount * 50; 
+            }
+
+            const grossEarnings = Math.max(0, baseEarnings);
             const uif = employee.is_uif_registered ? (grossEarnings * 0.01) : 0;
             const advance = parseFloat(employee.advance_balance || 0);
-            const netSalary = grossEarnings - uif - advance;
+            const netSalary = Math.max(0, grossEarnings - uif - advance - deductions);
 
             const existSql = 'SELECT id FROM payroll WHERE employee_id = ? AND cycle_start = ? AND cycle_end = ?';
             const existParams = [empId, start, end];
-            console.log('📝 Executing SQL:', existSql, 'Params:', existParams);
             const [existing] = await db.execute(existSql, existParams);
             
             if (existing.length > 0) {
-                const upSql = 'UPDATE payroll SET total_hours = ?, gross_earnings = ?, base_salary = ?, deductions = 0, uif_amount = ?, advance_deduction = ?, net_salary = ?, status = "pending" WHERE id = ?';
-                const upParams = [totalHours, grossEarnings, rate, uif, advance, netSalary, existing[0].id];
-                console.log('📝 Executing SQL (Update Payroll):', upSql, 'Params:', upParams);
+                const upSql = 'UPDATE payroll SET total_hours = ?, gross_earnings = ?, base_salary = ?, deductions = ?, uif_amount = ?, advance_deduction = ?, overtime = ?, net_salary = ?, status = "pending" WHERE id = ?';
+                const upParams = [totalHours, grossEarnings, rate, deductions, uif, advance, (overtimeHours * rate * (parseFloat(settings.ot_multiplier) || 1.5)), netSalary, existing[0].id];
                 await db.execute(upSql, upParams);
                 results.push({ empId, action: 'updated' });
             } else {
-                const insSql = 'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, gross_earnings, base_salary, deductions, uif_amount, advance_deduction, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending")';
-                const insParams = [empId, start, end, totalHours, grossEarnings, rate, 0, uif, advance, netSalary];
-                console.log('📝 Executing SQL (Insert Payroll):', insSql, 'Params:', insParams);
+                const insSql = 'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, gross_earnings, base_salary, deductions, uif_amount, advance_deduction, overtime, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending")';
+                const insParams = [empId, start, end, totalHours, grossEarnings, rate, deductions, uif, advance, (overtimeHours * rate * (parseFloat(settings.ot_multiplier) || 1.5)), netSalary];
                 await db.execute(insSql, insParams);
                 results.push({ empId, action: 'created' });
             }
