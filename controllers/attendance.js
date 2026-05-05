@@ -46,6 +46,7 @@ exports.getAttendance = async (req, res) => {
     query += ' ORDER BY a.date DESC, a.in_time DESC';
  
     try {
+        console.log('📝 Executing SQL (getAttendance):', query, 'Params:', params);
         const [rows] = await db.execute(query, params);
         const enhancedRows = rows.map(row => {
             const hours = parseFloat(row.total_hours || 0);
@@ -58,6 +59,7 @@ exports.getAttendance = async (req, res) => {
         });
         res.json(enhancedRows);
     } catch (err) {
+        console.error('❌ SQL Error (getAttendance):', err);
         res.status(500).json({ message: 'Error fetching attendance', error: err.message });
     }
 };
@@ -125,10 +127,16 @@ exports.addManualAttendance = async (req, res) => {
         if (fIn && fOut) {
             totalHours = ((new Date(fOut) - new Date(fIn)) / (1000 * 60 * 60)).toFixed(2);
         }
-        await db.execute('INSERT INTO attendance (employee_id, date, in_time, out_time, total_hours, status) VALUES (?, ?, ?, ?, ?, ?)', [employeeId, date, fIn, fOut, totalHours, status || 'present']);
+        const sql = 'INSERT INTO attendance (employee_id, date, in_time, out_time, total_hours, status) VALUES (?, ?, ?, ?, ?, ?)';
+        const values = [employeeId, date, fIn, fOut, totalHours, status || 'present'];
+        
+        console.log('📝 Executing SQL (Add Manual Attendance):', sql, 'Params:', values);
+        await db.execute(sql, values);
+        
         await logAudit(req.user.id, 'ADD_MANUAL_ATTENDANCE', employeeId, { date, status });
         res.json({ message: 'Added successfully' });
     } catch (err) {
+        console.error('❌ SQL Error (addManualAttendance):', err);
         res.status(500).json({ message: 'Failed', error: err.message });
     }
 };
@@ -143,7 +151,6 @@ exports.updateAttendance = async (req, res) => {
             return res.status(403).json({ message: 'Cannot update record' });
         }
 
-        // Normalize datetime-local format or ISO strings to MySQL format ("2026-05-04 13:30:00")
         const normalize = (dt) => {
             if (!dt) return null;
             return dt.replace('T', ' ').replace(/\.\d+Z$/, '').substring(0, 19);
@@ -151,7 +158,6 @@ exports.updateAttendance = async (req, res) => {
         const fIn = normalize(in_time);
         const fOut = normalize(out_time);
         
-        // Calculate hours robustly using timestamps
         let totalHours = 0;
         if (fIn && fOut) {
             const diff = new Date(fOut.replace(' ', 'T')) - new Date(fIn.replace(' ', 'T'));
@@ -159,14 +165,16 @@ exports.updateAttendance = async (req, res) => {
         }
         
         const finalStatus = status ? status.toLowerCase() : 'present';
-        const finalDate = fIn ? fIn.split(' ')[0] : null; // Extract date from in_time
+        const finalDate = fIn ? fIn.split(' ')[0] : null;
 
-        await db.execute(
-            'UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ?, date = ? WHERE id = ?', 
-            [fIn, fOut, finalStatus, totalHours, finalDate, id]
-        );
+        const sql = 'UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ?, date = ? WHERE id = ?';
+        const values = [fIn, fOut, finalStatus, totalHours, finalDate, id];
+        
+        console.log('📝 Executing SQL (Update Attendance):', sql, 'Params:', values);
+        await db.execute(sql, values);
         res.json({ message: 'Updated' });
     } catch (err) {
+        console.error('❌ SQL Error (updateAttendance):', err);
         res.status(500).json({ message: 'Failed', error: err.message });
     }
 };

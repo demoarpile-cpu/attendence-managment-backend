@@ -8,31 +8,32 @@ exports.generatePayroll = async (req, res) => {
     const end = cycleEnd || endDate;
 
     try {
-        if (!start || !end) {
-            return res.status(400).json({ message: 'Start and end dates are required' });
-        }
+        if (!start || !end) return res.status(400).json({ message: 'Start and end dates are required' });
 
-        // If no specific employees provided, get all active employees for this admin
+        // 1. If no specific employees provided, get all active employees for this admin
         if (!employeeIds || (Array.isArray(employeeIds) && employeeIds.length === 0)) {
-            const [allEmp] = await db.execute('SELECT id FROM employees WHERE created_by = ? AND status = "active"', [req.user.id]);
+            const sql = 'SELECT id FROM employees WHERE created_by = ? AND status = "active"';
+            console.log('📝 Executing SQL:', sql, 'Params:', [req.user.id]);
+            const [allEmp] = await db.execute(sql, [req.user.id]);
             employeeIds = allEmp.map(e => e.id);
         }
 
-        if (employeeIds.length === 0) {
-            return res.json({ message: 'No employees to process', results: [] });
-        }
+        if (employeeIds.length === 0) return res.json({ message: 'No employees to process', results: [] });
 
         const results = [];
         for (const empId of employeeIds) {
-            const [empCheck] = await db.execute('SELECT created_by, salary_rate, salary_type, is_uif_registered, advance_balance FROM employees WHERE id = ?', [empId]);
+            const empSql = 'SELECT created_by, salary_rate, salary_type, is_uif_registered, advance_balance FROM employees WHERE id = ?';
+            console.log('📝 Executing SQL:', empSql, 'Params:', [empId]);
+            const [empCheck] = await db.execute(empSql, [empId]);
+            
             if (empCheck.length === 0) continue;
             if (req.user.role === 'admin' && empCheck[0].created_by !== req.user.id) continue;
             
             const employee = empCheck[0];
-            const [attendance] = await db.execute(
-                'SELECT status, total_hours FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?',
-                [empId, start, end]
-            );
+            const attSql = 'SELECT status, total_hours FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?';
+            const attParams = [empId, start, end];
+            console.log('📝 Executing SQL:', attSql, 'Params:', attParams);
+            const [attendance] = await db.execute(attSql, attParams);
 
             let totalHours = 0;
             let presentDays = 0;
@@ -46,29 +47,32 @@ exports.generatePayroll = async (req, res) => {
             if (employee.salary_type === 'hourly') grossEarnings = totalHours * rate;
             else if (employee.salary_type === 'daily') grossEarnings = presentDays * rate;
 
-            // UIF is 1% of total earnings if registered
             const uif = employee.is_uif_registered ? (grossEarnings * 0.01) : 0;
             const advance = parseFloat(employee.advance_balance || 0);
             const netSalary = grossEarnings - uif - advance;
 
-            const [existing] = await db.execute('SELECT id FROM payroll WHERE employee_id = ? AND cycle_start = ? AND cycle_end = ?', [empId, start, end]);
+            const existSql = 'SELECT id FROM payroll WHERE employee_id = ? AND cycle_start = ? AND cycle_end = ?';
+            const existParams = [empId, start, end];
+            console.log('📝 Executing SQL:', existSql, 'Params:', existParams);
+            const [existing] = await db.execute(existSql, existParams);
             
             if (existing.length > 0) {
-                await db.execute(
-                    'UPDATE payroll SET total_hours = ?, gross_earnings = ?, base_salary = ?, deductions = 0, uif_amount = ?, advance_deduction = ?, net_salary = ?, status = "pending" WHERE id = ?',
-                    [totalHours, grossEarnings, rate, uif, advance, netSalary, existing[0].id]
-                );
+                const upSql = 'UPDATE payroll SET total_hours = ?, gross_earnings = ?, base_salary = ?, deductions = 0, uif_amount = ?, advance_deduction = ?, net_salary = ?, status = "pending" WHERE id = ?';
+                const upParams = [totalHours, grossEarnings, rate, uif, advance, netSalary, existing[0].id];
+                console.log('📝 Executing SQL (Update Payroll):', upSql, 'Params:', upParams);
+                await db.execute(upSql, upParams);
                 results.push({ empId, action: 'updated' });
             } else {
-                await db.execute(
-                    'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, gross_earnings, base_salary, deductions, uif_amount, advance_deduction, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending")',
-                    [empId, start, end, totalHours, grossEarnings, rate, 0, uif, advance, netSalary]
-                );
+                const insSql = 'INSERT INTO payroll (employee_id, cycle_start, cycle_end, total_hours, gross_earnings, base_salary, deductions, uif_amount, advance_deduction, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "pending")';
+                const insParams = [empId, start, end, totalHours, grossEarnings, rate, 0, uif, advance, netSalary];
+                console.log('📝 Executing SQL (Insert Payroll):', insSql, 'Params:', insParams);
+                await db.execute(insSql, insParams);
                 results.push({ empId, action: 'created' });
             }
         }
         res.json({ message: 'Payroll generation complete', results });
     } catch (err) {
+        console.error('❌ SQL Error (generatePayroll):', err);
         res.status(500).json({ message: 'Generation failed', error: err.message });
     }
 };
@@ -87,19 +91,19 @@ exports.getPayrollHistory = async (req, res) => {
         }
 
         query += ' ORDER BY p.cycle_end DESC';
+        console.log('📝 Executing SQL (getPayrollHistory):', query, 'Params:', params);
         const [rows] = await db.execute(query, params);
 
         const enhancedRows = await Promise.all(rows.map(async (p) => {
-            // Safety: Avoid 'undefined' in query if columns are missing
             const start = p.cycle_start || null;
             const end = p.cycle_end || null;
             
             let shifts = [];
             if (start && end) {
-                const [shiftRows] = await db.execute(
-                    'SELECT date, total_hours FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?',
-                    [p.employee_id, start, end]
-                );
+                const shiftSql = 'SELECT date, total_hours FROM attendance WHERE employee_id = ? AND date BETWEEN ? AND ?';
+                const shiftParams = [p.employee_id, start, end];
+                console.log('📝 Executing SQL (Fetch Shifts):', shiftSql, 'Params:', shiftParams);
+                const [shiftRows] = await db.execute(shiftSql, shiftParams);
                 shifts = shiftRows;
             }
 
@@ -114,7 +118,7 @@ exports.getPayrollHistory = async (req, res) => {
 
         res.json(enhancedRows);
     } catch (err) {
-        console.error('Payroll fetch error:', err);
+        console.error('❌ SQL Error (getPayrollHistory):', err);
         res.status(500).json({ message: 'Error fetching payroll', error: err.message });
     }
 };

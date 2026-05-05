@@ -14,9 +14,12 @@ exports.getAllEmployees = async (req, res) => {
         }
 
         query += ' ORDER BY created_at DESC';
+        
+        console.log('📝 Executing SQL:', query, 'Params:', params);
         const [rows] = await db.execute(query, params);
         res.json(rows);
     } catch (err) {
+        console.error('❌ SQL Error (getAllEmployees):', err);
         res.status(500).json({ message: 'Error fetching employees', error: err.message });
     }
 };
@@ -47,43 +50,44 @@ exports.addEmployee = async (req, res) => {
         const dbShift = ['Morning Shift', 'Evening Shift', 'Night Shift'].includes(shift) ? shift : 'Morning Shift';
         const dbSalaryType = ['hourly', 'daily'].includes(salary_type) ? salary_type : 'hourly';
 
-        const [empResult] = await db.execute(
-            'INSERT INTO employees (machine_id, custom_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, uif_number, advance_balance, signature, created_by, is_uif_registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [
-                machine_id || null, 
-                custom_id || '', 
-                name || '', 
-                dbRole, 
-                department || 'General', 
-                dbShift, 
-                email || '', 
-                phone || '', 
-                parseFloat(salary_rate) || 0, 
-                dbSalaryType, 
-                formattedJoinedDate, 
-                photo || null, 
-                uif_number || '', 
-                parseFloat(advance_balance) || 0, 
-                eSignature || null,
-                creatorId,
-                is_uif_registered === undefined ? 1 : (is_uif_registered ? 1 : 0)
-            ]
-        );
+        const empSql = 'INSERT INTO employees (machine_id, custom_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, uif_number, advance_balance, signature, created_by, is_uif_registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+        const empValues = [
+            machine_id || null, 
+            custom_id || '', 
+            name || '', 
+            dbRole, 
+            department || 'General', 
+            dbShift, 
+            email || '', 
+            phone || '', 
+            parseFloat(salary_rate) || 0, 
+            dbSalaryType, 
+            formattedJoinedDate, 
+            photo || null, 
+            uif_number || '', 
+            parseFloat(advance_balance) || 0, 
+            eSignature || null,
+            creatorId,
+            is_uif_registered === undefined ? 1 : (is_uif_registered ? 1 : 0)
+        ];
+
+        console.log('📝 Executing SQL (Add Employee):', empSql, 'Params:', empValues);
+        const [empResult] = await db.execute(empSql, empValues);
 
         const employeeId = empResult.insertId;
         const hashedPassword = await bcrypt.hash(password || '123456', 10);
 
         // 2. Create login user
-        // The role here determines if they get the admin dashboard or employee portal
         const finalRole = role === 'admin' ? 'admin' : 'employee';
+        const userSql = 'INSERT INTO users (employee_id, email, password, role, name, created_by) VALUES (?, ?, ?, ?, ?, ?)';
+        const userValues = [employeeId, email || '', hashedPassword, finalRole, name || '', creatorId];
         
-        await db.execute(
-            'INSERT INTO users (employee_id, email, password, role, name, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-            [employeeId, email || '', hashedPassword, finalRole, name || '', creatorId]
-        );
+        console.log('📝 Executing SQL (Create User):', userSql, 'Params:', userValues);
+        await db.execute(userSql, userValues);
 
         res.status(201).json({ message: 'Personnel added successfully', id: employeeId });
     } catch (err) {
+        console.error('❌ SQL Error (addEmployee):', err);
         res.status(500).json({ message: 'Error adding personnel', error: err.message });
     }
 };
@@ -91,7 +95,9 @@ exports.addEmployee = async (req, res) => {
 // Get single employee details
 exports.getEmployeeById = async (req, res) => {
     try {
-        const [rows] = await db.execute('SELECT * FROM employees WHERE id = ?', [req.params.id]);
+        const sql = 'SELECT * FROM employees WHERE id = ?';
+        console.log('📝 Executing SQL:', sql, 'Params:', [req.params.id]);
+        const [rows] = await db.execute(sql, [req.params.id]);
         if (rows.length === 0) return res.status(404).json({ message: 'Not found' });
         
         // Safety: If admin, check if they own this record
@@ -101,7 +107,8 @@ exports.getEmployeeById = async (req, res) => {
         
         res.json(rows[0]);
     } catch (err) {
-        res.status(500).json({ message: 'Server error' });
+        console.error('❌ SQL Error (getEmployeeById):', err);
+        res.status(500).json({ message: 'Server error', error: err.message });
     }
 };
 
@@ -147,9 +154,7 @@ exports.updateEmployee = async (req, res) => {
                 }
 
                 // Map/Validate ENUM fields
-                if (field === 'role') {
-                    val = (val === 'admin') ? 'admin' : 'employee';
-                }
+                if (field === 'role') val = (val === 'admin') ? 'admin' : 'employee';
                 if (field === 'shift') {
                     const validShifts = ['Morning Shift', 'Evening Shift', 'Night Shift'];
                     if (!validShifts.includes(val)) val = 'Morning Shift';
@@ -167,30 +172,19 @@ exports.updateEmployee = async (req, res) => {
             }
         });
 
-        if (photo !== undefined) {
-            empUpdates.push('`photo` = ?');
-            empParams.push(photo);
-        }
-
-        if (data.eSignature !== undefined) {
-            empUpdates.push('`signature` = ?');
-            empParams.push(data.eSignature);
-        }
-
+        if (photo !== undefined) { empUpdates.push('`photo` = ?'); empParams.push(photo); }
+        if (data.eSignature !== undefined) { empUpdates.push('`signature` = ?'); empParams.push(data.eSignature); }
         if (data.is_uif_registered !== undefined) {
             const isUif = data.is_uif_registered === 'true' || data.is_uif_registered === true || data.is_uif_registered === 1 || data.is_uif_registered === '1';
             empUpdates.push('`is_uif_registered` = ?');
             empParams.push(isUif ? 1 : 0);
         }
-
-        if (data.joined_date) {
-            empUpdates.push('`joined_date` = ?');
-            empParams.push(data.joined_date.split('T')[0]);
-        }
+        if (data.joined_date) { empUpdates.push('`joined_date` = ?'); empParams.push(data.joined_date.split('T')[0]); }
 
         if (empUpdates.length > 0) {
             const empQuery = `UPDATE employees SET ${empUpdates.join(', ')} WHERE id = ?`;
             empParams.push(id);
+            console.log('📝 Executing SQL (Update Employee):', empQuery, 'Params:', empParams);
             await db.execute(empQuery, empParams);
         }
 
@@ -210,18 +204,15 @@ exports.updateEmployee = async (req, res) => {
         }
 
         if (userUpdates.length > 0) {
-            try {
-                const userQuery = `UPDATE users SET ${userUpdates.join(', ')} WHERE employee_id = ?`;
-                userParams.push(id);
-                await db.execute(userQuery, userParams);
-            } catch (uErr) {
-                console.error('⚠️ User sync failed:', uErr.message);
-            }
+            const userQuery = `UPDATE users SET ${userUpdates.join(', ')} WHERE employee_id = ?`;
+            userParams.push(id);
+            console.log('📝 Executing SQL (Sync User):', userQuery, 'Params:', userParams);
+            await db.execute(userQuery, userParams);
         }
 
         res.json({ message: 'Record updated successfully' });
     } catch (err) {
-        console.error('❌ Update Employee Error:', err);
+        console.error('❌ SQL Error (updateEmployee):', err);
         if (err.code === 'ER_DUP_ENTRY') {
             return res.status(400).json({ message: 'Duplicate entry: Machine ID or Email already exists', error: err.message });
         }
@@ -239,15 +230,18 @@ exports.deleteEmployee = async (req, res) => {
             return res.status(403).json({ message: 'Cannot delete records added by another admin' });
         }
 
-        await db.execute('DELETE FROM users WHERE employee_id = ?', [id]);
-        const [result] = await db.execute('DELETE FROM employees WHERE id = ?', [id]);
+        const userSql = 'DELETE FROM users WHERE employee_id = ?';
+        console.log('📝 Executing SQL:', userSql, 'Params:', [id]);
+        await db.execute(userSql, [id]);
+
+        const empSql = 'DELETE FROM employees WHERE id = ?';
+        console.log('📝 Executing SQL:', empSql, 'Params:', [id]);
+        const [result] = await db.execute(empSql, [id]);
         
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Record not found' });
-        }
-        
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'Record not found' });
         res.json({ message: 'Record deleted successfully' });
     } catch (err) {
+        console.error('❌ SQL Error (deleteEmployee):', err);
         res.status(500).json({ message: 'Error deleting record', error: err.message });
     }
 };
