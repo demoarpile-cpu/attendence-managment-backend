@@ -131,6 +131,7 @@ const initDB = async () => {
                 business_address TEXT,
                 business_phone VARCHAR(50) DEFAULT '',
                 business_email VARCHAR(150) DEFAULT '',
+                standard_start_time TIME DEFAULT '09:00:00',
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             )
         `);
@@ -192,6 +193,7 @@ const initDB = async () => {
             { table: 'settings', column: 'business_address', type: 'TEXT' },
             { table: 'settings', column: 'business_phone', type: 'VARCHAR(50) DEFAULT ""' },
             { table: 'settings', column: 'business_email', type: 'VARCHAR(150) DEFAULT ""' },
+            { table: 'settings', column: 'standard_start_time', type: 'TIME DEFAULT "09:00:00"' },
 
             // Column Upgrades (Changing TEXT to LONGTEXT for large images)
             { table: 'employees', column: 'photo', type: 'LONGTEXT' },

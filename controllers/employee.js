@@ -116,7 +116,10 @@ exports.getEmployeeById = async (req, res) => {
 exports.updateEmployee = async (req, res) => {
     const { id } = req.params;
     const data = req.body;
-    
+
+    console.log('📝 Incoming Employee Update Request - ID:', id);
+    console.log('📝 Data Received:', JSON.stringify(data, null, 2));
+
     // Handle Profile Image Upload
     let photo = data.photo;
     if (req.file) {

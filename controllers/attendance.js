@@ -66,13 +66,15 @@ exports.getAttendance = async (req, res) => {
 
 // Internal helper for background processing
 const processAllRawLogs = async () => {
-    const [rawLogs] = await db.execute('SELECT * FROM raw_logs WHERE is_processed = FALSE ORDER BY punch_time ASC');
-    if (rawLogs.length === 0) return { success: true, count: 0 };
+    const [settingsRows] = await db.execute('SELECT standard_start_time FROM settings WHERE id = 1');
+    const stdStart = settingsRows[0]?.standard_start_time || '09:00:00';
 
     let count = 0;
     for (let log of rawLogs) {
-        // Since we enabled dateStrings: true, punch_time is a string. We might need to split it.
-        const date = log.punch_time.split(' ')[0];
+        const dateTimeStr = log.punch_time; 
+        const date = dateTimeStr.split(' ')[0];
+        const time = dateTimeStr.split(' ')[1];
+
         const [emps] = await db.execute('SELECT id FROM employees WHERE machine_id = ?', [log.machine_user_id]);
         
         if (emps.length > 0) {
@@ -80,13 +82,21 @@ const processAllRawLogs = async () => {
             const [existing] = await db.execute('SELECT * FROM attendance WHERE employee_id = ? AND date = ?', [employeeId, date]);
 
             if (existing.length === 0) {
-                await db.execute('INSERT INTO attendance (employee_id, date, in_time, status) VALUES (?, ?, ?, ?)', [employeeId, date, log.punch_time, 'present']);
+                // Determine if late
+                let status = 'present';
+                if (time && stdStart) {
+                    const punchTimeVal = time.substring(0, 5).replace(':', '');
+                    const stdTimeVal = stdStart.substring(0, 5).replace(':', '');
+                    if (parseInt(punchTimeVal) > parseInt(stdTimeVal)) {
+                        status = 'late';
+                    }
+                }
+                await db.execute('INSERT INTO attendance (employee_id, date, in_time, status) VALUES (?, ?, ?, ?)', [employeeId, date, log.punch_time, status]);
             } else {
                 const inTime = new Date(existing[0].in_time);
                 const outTime = new Date(log.punch_time);
                 const diffMs = outTime - inTime;
                 
-                // Only update if it's actually later than current out_time or in_time
                 if (diffMs > 0) {
                     const hours = (diffMs / (1000 * 60 * 60)).toFixed(2);
                     await db.execute('UPDATE attendance SET out_time = ?, total_hours = ? WHERE id = ?', [log.punch_time, hours, existing[0].id]);

@@ -28,7 +28,7 @@ exports.updateSettings = async (req, res) => {
         const fields = {
             machine_ip, machine_port, machine_alias, sync_interval, 
             late_deduction: late_deduction !== undefined ? (late_deduction ? 1 : 0) : undefined, 
-            salary_cycle, ot_multiplier,
+            salary_cycle, ot_multiplier, standard_start_time,
             business_name, business_address, business_phone, business_email
         };
 
