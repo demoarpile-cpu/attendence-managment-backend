@@ -73,8 +73,8 @@ exports.generatePayroll = async (req, res) => {
             // Deductions logic
             let deductions = 0;
             if (settings.late_deduction && lateCount > 0) {
-                // Example: Deduct 50 per late if enabled
-                deductions = lateCount * 50; 
+                const deductionRate = parseFloat(settings.late_deduction_amount || 0);
+                deductions = lateCount * deductionRate; 
             }
 
             const grossEarnings = Math.max(0, baseEarnings);

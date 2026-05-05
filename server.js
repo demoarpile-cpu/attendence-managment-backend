@@ -194,6 +194,7 @@ const initDB = async () => {
             { table: 'settings', column: 'business_phone', type: 'VARCHAR(50) DEFAULT ""' },
             { table: 'settings', column: 'business_email', type: 'VARCHAR(150) DEFAULT ""' },
             { table: 'settings', column: 'standard_start_time', type: 'TIME DEFAULT "09:00:00"' },
+            { table: 'settings', column: 'late_deduction_amount', type: 'DECIMAL(10,2) DEFAULT 50.00' },
 
             // Column Upgrades (Changing TEXT to LONGTEXT for large images)
             { table: 'employees', column: 'photo', type: 'LONGTEXT' },

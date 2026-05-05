@@ -16,7 +16,7 @@ exports.getSettings = async (req, res) => {
 exports.updateSettings = async (req, res) => {
     const { 
         machine_ip, machine_port, machine_alias, sync_interval, 
-        late_deduction, salary_cycle, ot_multiplier,
+        late_deduction, late_deduction_amount, salary_cycle, ot_multiplier, standard_start_time,
         business_name, business_address, business_phone, business_email,
         admin_password
     } = req.body;
@@ -28,6 +28,7 @@ exports.updateSettings = async (req, res) => {
         const fields = {
             machine_ip, machine_port, machine_alias, sync_interval, 
             late_deduction: late_deduction !== undefined ? (late_deduction ? 1 : 0) : undefined, 
+            late_deduction_amount,
             salary_cycle, ot_multiplier, standard_start_time,
             business_name, business_address, business_phone, business_email
         };
@@ -49,7 +50,7 @@ exports.updateSettings = async (req, res) => {
         if (admin_password) {
             const bcrypt = require('bcryptjs');
             const hashedPassword = await bcrypt.hash(admin_password, 10);
-            const userSql = 'UPDATE users SET password = ? WHERE role = "admin"';
+            const userSql = 'UPDATE users SET password = ? WHERE role IN ("admin", "Master Admin")';
             console.log('📝 Executing SQL (Update Admin Password):', userSql);
             await db.execute(userSql, [hashedPassword]);
         }
@@ -57,6 +58,11 @@ exports.updateSettings = async (req, res) => {
         res.json({ message: 'Settings updated successfully' });
     } catch (err) {
         console.error('❌ SQL Error (updateSettings):', err);
-        res.status(500).json({ message: 'Error updating settings', error: err.message });
+        res.status(500).json({ 
+            message: 'Error updating settings', 
+            error: err.message,
+            sqlMessage: err.sqlMessage,
+            code: err.code
+        });
     }
 };
