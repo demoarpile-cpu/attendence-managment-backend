@@ -217,7 +217,7 @@ exports.getDashboardStats = async (req, res) => {
         const cycleStartDate = new Date(now.getFullYear(), now.getMonth(), cycleStart).toISOString().split('T')[0];
 
         // 1. Fetch All Active Employees
-        let empQuery = 'SELECT id, salary_rate, salary_type FROM employees WHERE status = "active"';
+        let empQuery = 'SELECT id, name, department, photo, role, salary_rate, salary_type FROM employees WHERE status = "active"';
         let empParams = [];
         if (req.user.role === 'admin') {
             empQuery += ' AND (created_by = ? OR created_by IS NULL)';
@@ -238,6 +238,13 @@ exports.getDashboardStats = async (req, res) => {
             attParams.push(req.user.id);
         }
         const [attendance] = await db.execute(attQuery, attParams);
+
+        // Identify Present and Absent IDs
+        const presentIds = attendance.filter(a => 
+            ['present', 'late', 'half_day'].includes(a.status?.toLowerCase())
+        ).map(a => a.employee_id);
+
+        const absentStaff = employees.filter(e => !presentIds.includes(e.id));
 
         // 3. Fetch Cycle Attendance for Payout Calculation
         let cycleAttQuery = `
@@ -297,8 +304,9 @@ exports.getDashboardStats = async (req, res) => {
         res.json({
             totalStaff: employees.length,
             presentToday: attendance.filter(a => a.status?.toLowerCase() === 'present' || a.status?.toLowerCase() === 'late').length,
-            absentToday: Math.max(0, employees.length - attendance.filter(a => a.status?.toLowerCase() === 'present' || a.status?.toLowerCase() === 'late' || a.status?.toLowerCase() === 'half_day').length),
+            absentToday: absentStaff.length,
             lateToday: attendance.filter(a => a.status?.toLowerCase() === 'late').length,
+            absentStaff: absentStaff, // Full list for the UI
             trend: trendData,
             salaryCycle: { 
                 progress: Math.min(Math.round(((now.getDate() - cycleStart + 1) / (cycleEnd - cycleStart + 1)) * 100), 100), 

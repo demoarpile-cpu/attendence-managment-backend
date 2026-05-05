@@ -42,23 +42,28 @@ exports.addEmployee = async (req, res) => {
         // 1. Insert into employees table
         const formattedJoinedDate = joined_date ? joined_date.split('T')[0] : new Date().toISOString().split('T')[0];
 
+        // Ensure role is valid for enum
+        const dbRole = (role === 'admin') ? 'admin' : 'employee';
+        const dbShift = ['Morning Shift', 'Evening Shift', 'Night Shift'].includes(shift) ? shift : 'Morning Shift';
+        const dbSalaryType = ['hourly', 'daily'].includes(salary_type) ? salary_type : 'hourly';
+
         const [empResult] = await db.execute(
             'INSERT INTO employees (machine_id, custom_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, uif_number, advance_balance, signature, created_by, is_uif_registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 machine_id || null, 
                 custom_id || '', 
                 name || '', 
-                role || 'employee', 
+                dbRole, 
                 department || 'General', 
-                shift || 'Morning Shift', 
+                dbShift, 
                 email || '', 
                 phone || '', 
-                salary_rate || 0, 
-                salary_type || 'hourly', 
+                parseFloat(salary_rate) || 0, 
+                dbSalaryType, 
                 formattedJoinedDate, 
                 photo || null, 
                 uif_number || '', 
-                advance_balance || 0, 
+                parseFloat(advance_balance) || 0, 
                 eSignature || null,
                 creatorId,
                 is_uif_registered === undefined ? 1 : (is_uif_registered ? 1 : 0)
@@ -134,10 +139,30 @@ exports.updateEmployee = async (req, res) => {
             if (data[field] !== undefined) {
                 empUpdates.push(`\`${field}\` = ?`);
                 let val = data[field] === '' ? null : data[field];
+                
                 // Ensure numeric fields are numbers or null
                 if (field === 'salary_rate' || field === 'advance_balance') {
-                    val = val !== null ? parseFloat(val) : 0;
+                    const parsed = parseFloat(val);
+                    val = isNaN(parsed) ? 0 : parsed;
                 }
+
+                // Map/Validate ENUM fields
+                if (field === 'role') {
+                    val = (val === 'admin') ? 'admin' : 'employee';
+                }
+                if (field === 'shift') {
+                    const validShifts = ['Morning Shift', 'Evening Shift', 'Night Shift'];
+                    if (!validShifts.includes(val)) val = 'Morning Shift';
+                }
+                if (field === 'status') {
+                    const validStatus = ['active', 'on_leave', 'terminated'];
+                    if (!validStatus.includes(val)) val = 'active';
+                }
+                if (field === 'salary_type') {
+                    const validTypes = ['hourly', 'daily'];
+                    if (!validTypes.includes(val)) val = 'hourly';
+                }
+
                 empParams.push(val);
             }
         });

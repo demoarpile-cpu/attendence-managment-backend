@@ -148,7 +148,6 @@ const initDB = async () => {
 
         console.log('🔄 Checking database columns...');
         const columns = [
-            // Employees Table
             { table: 'employees', column: 'custom_id', type: 'VARCHAR(100) DEFAULT ""' },
             { table: 'employees', column: 'shift', type: "ENUM('Morning Shift','Evening Shift','Night Shift') DEFAULT 'Morning Shift'" },
             { table: 'employees', column: 'phone', type: 'VARCHAR(30) DEFAULT ""' },
@@ -157,6 +156,12 @@ const initDB = async () => {
             { table: 'employees', column: 'is_uif_registered', type: 'TINYINT(1) DEFAULT 1' },
             { table: 'employees', column: 'advance_balance', type: 'DECIMAL(10,2) DEFAULT 0.00' },
             { table: 'employees', column: 'signature', type: 'LONGTEXT' },
+            { table: 'employees', column: 'status', type: "ENUM('active','on_leave','terminated') DEFAULT 'active'" },
+            { table: 'employees', column: 'joined_date', type: 'DATE' },
+            { table: 'employees', column: 'salary_rate', type: 'DECIMAL(10,2) DEFAULT 0.00' },
+            { table: 'employees', column: 'salary_type', type: "ENUM('hourly','daily') DEFAULT 'hourly'" },
+            { table: 'employees', column: 'department', type: 'VARCHAR(100) DEFAULT "General"' },
+            { table: 'employees', column: 'email', type: 'VARCHAR(150) UNIQUE' },
             { table: 'employees', column: 'created_by', type: 'INT' },
             
             // Users Table
