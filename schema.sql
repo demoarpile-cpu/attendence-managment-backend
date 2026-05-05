@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS employees (
     salary_type       ENUM('hourly','daily') DEFAULT 'hourly',
     status            ENUM('active','on_leave','terminated') DEFAULT 'active',
     joined_date       DATE,
-    photo             TEXT,                                        -- Profile image URL
+    photo             LONGTEXT,                                    -- Profile image URL
     uif_number        VARCHAR(50) DEFAULT '',                      -- UIF Registration
     is_uif_registered TINYINT(1) DEFAULT 1,                       -- 1 = Yes, 0 = No
     advance_balance   DECIMAL(10,2) DEFAULT 0.00,                 -- Current debt/advance
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS users (
     password    VARCHAR(255) NOT NULL,
     role        ENUM('admin','employee') NOT NULL,
     name        VARCHAR(100) DEFAULT '',
-    photo       TEXT,
+    photo       LONGTEXT,
     created_by  INT,
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL

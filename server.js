@@ -186,20 +186,23 @@ const initDB = async () => {
             { table: 'settings', column: 'business_name', type: 'VARCHAR(150) DEFAULT "BioTrack Pro"' },
             { table: 'settings', column: 'business_address', type: 'TEXT' },
             { table: 'settings', column: 'business_phone', type: 'VARCHAR(50) DEFAULT ""' },
-            { table: 'settings', column: 'business_email', type: 'VARCHAR(150) DEFAULT ""' }
+            { table: 'settings', column: 'business_email', type: 'VARCHAR(150) DEFAULT ""' },
+
+            // Column Upgrades (Changing TEXT to LONGTEXT for large images)
+            { table: 'employees', column: 'photo', type: 'LONGTEXT' },
+            { table: 'employees', column: 'signature', type: 'LONGTEXT' },
+            { table: 'users', column: 'photo', type: 'LONGTEXT' }
         ];
 
         for (const col of columns) {
             try {
-                const [check] = await db.execute(`
-                    SELECT COLUMN_NAME 
-                    FROM INFORMATION_SCHEMA.COLUMNS 
-                    WHERE TABLE_NAME = ? AND COLUMN_NAME = ? AND TABLE_SCHEMA = DATABASE()
-                `, [col.table, col.column]);
-
-                if (check.length === 0) {
+                const [existingCols] = await db.execute(`SHOW COLUMNS FROM ${col.table} LIKE ?`, [col.column]);
+                if (existingCols.length === 0) {
+                    console.log(`➕ Adding missing column: ${col.column} to ${col.table}`);
                     await db.execute(`ALTER TABLE ${col.table} ADD COLUMN ${col.column} ${col.type}`);
-                    console.log(`✅ Added column ${col.column} to ${col.table}`);
+                } else if (col.type.toUpperCase().includes('LONGTEXT') && !existingCols[0].Type.toUpperCase().includes('LONGTEXT')) {
+                    console.log(`⬆️ Upgrading column type: ${col.column} in ${col.table} to LONGTEXT`);
+                    await db.execute(`ALTER TABLE ${col.table} MODIFY COLUMN ${col.column} ${col.type}`);
                 }
             } catch (err) {
                 console.error(`⚠️ Failed for ${col.column}:`, err.message);
