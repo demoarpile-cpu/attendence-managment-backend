@@ -103,92 +103,89 @@ exports.getEmployeeById = async (req, res) => {
 // Update employee
 exports.updateEmployee = async (req, res) => {
     const { id } = req.params;
-    const { 
-        machine_id, custom_id, name, role, department, shift, email, phone, 
-        salary_rate, salary_type, joined_date, 
-        uif_number, advance_balance, eSignature, status, password, is_uif_registered 
-    } = req.body;
-
-    // Handle stringified booleans from FormData
-    const isUif = is_uif_registered === 'true' || is_uif_registered === true || is_uif_registered === 1 || is_uif_registered === '1';
-
-    // Use uploaded file if present
-    let photo = req.body.photo;
+    const data = req.body;
+    
+    // Handle Profile Image Upload
+    let photo = data.photo;
     if (req.file) {
         photo = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
     }
 
     try {
-        // Safety: If admin, verify ownership
+        // 1. Safety Check: Verify ownership if admin
         const [existing] = await db.execute('SELECT created_by FROM employees WHERE id = ?', [id]);
-        if (existing.length > 0 && req.user.role === 'admin' && existing[0].created_by !== req.user.id) {
-            return res.status(403).json({ message: 'Cannot edit records added by another admin' });
+        if (existing.length === 0) return res.status(404).json({ message: 'Employee not found' });
+        
+        if (req.user.role === 'admin' && existing[0].created_by !== req.user.id && existing[0].created_by !== null) {
+            return res.status(403).json({ message: 'Cannot edit staff added by another admin' });
         }
 
-        // 1. Update employees table
-        const formattedJoinedDate = joined_date ? joined_date.split('T')[0] : null;
+        // 2. Build Dynamic Update for Employees Table
+        const empUpdates = [];
+        const empParams = [];
+        
+        const empFields = [
+            'machine_id', 'custom_id', 'name', 'role', 'department', 'shift', 
+            'email', 'phone', 'salary_rate', 'salary_type', 'uif_number', 
+            'advance_balance', 'status'
+        ];
 
-        await db.execute(
-            'UPDATE employees SET machine_id = ?, custom_id = ?, name = ?, role = ?, department = ?, shift = ?, email = ?, phone = ?, salary_rate = ?, salary_type = ?, joined_date = ?, photo = ?, uif_number = ?, advance_balance = ?, signature = ?, status = ?, is_uif_registered = ? WHERE id = ?',
-            [
-                machine_id || null, 
-                custom_id || '', 
-                name || '', 
-                role || 'employee', 
-                department || 'General', 
-                shift || 'Morning Shift', 
-                email || '', 
-                phone || '', 
-                salary_rate || 0, 
-                salary_type || 'hourly', 
-                formattedJoinedDate, 
-                photo || null, 
-                uif_number || '', 
-                advance_balance || 0, 
-                eSignature || null,
-                status || 'active',
-                isUif ? 1 : 0,
-                id
-            ]
-        );
+        empFields.forEach(field => {
+            if (data[field] !== undefined) {
+                empUpdates.push(`${field} = ?`);
+                empParams.push(data[field] === '' ? null : data[field]);
+            }
+        });
 
-        // 2. Update users table (Only if relevant fields are provided)
-        if (email || name || password || role || photo) {
+        if (photo !== undefined) {
+            empUpdates.push('photo = ?');
+            empParams.push(photo);
+        }
+
+        if (data.eSignature !== undefined) {
+            empUpdates.push('signature = ?');
+            empParams.push(data.eSignature);
+        }
+
+        if (data.is_uif_registered !== undefined) {
+            const isUif = data.is_uif_registered === 'true' || data.is_uif_registered === true || data.is_uif_registered === 1 || data.is_uif_registered === '1';
+            empUpdates.push('is_uif_registered = ?');
+            empParams.push(isUif ? 1 : 0);
+        }
+
+        if (data.joined_date) {
+            empUpdates.push('joined_date = ?');
+            empParams.push(data.joined_date.split('T')[0]);
+        }
+
+        if (empUpdates.length > 0) {
+            const empQuery = `UPDATE employees SET ${empUpdates.join(', ')} WHERE id = ?`;
+            empParams.push(id);
+            await db.execute(empQuery, empParams);
+        }
+
+        // 3. Sync to Users Table (if relevant fields provided)
+        const userUpdates = [];
+        const userParams = [];
+
+        if (data.email) { userUpdates.push('email = ?'); userParams.push(data.email); }
+        if (data.name) { userUpdates.push('name = ?'); userParams.push(data.name); }
+        if (photo) { userUpdates.push('photo = ?'); userParams.push(photo); }
+        if (data.role) { userUpdates.push('role = ?'); userParams.push(data.role === 'admin' ? 'admin' : 'employee'); }
+        
+        if (data.password) {
+            const hashedPassword = await bcrypt.hash(data.password, 10);
+            userUpdates.push('password = ?');
+            userParams.push(hashedPassword);
+        }
+
+        if (userUpdates.length > 0) {
             try {
-                let updates = [];
-                let params = [];
-                
-                if (email) {
-                    updates.push('email = ?');
-                    params.push(email);
-                }
-                if (name) {
-                    updates.push('name = ?');
-                    params.push(name);
-                }
-                if (password) {
-                    const hashedPassword = await bcrypt.hash(password, 10);
-                    updates.push('password = ?');
-                    params.push(hashedPassword);
-                }
-                if (role) {
-                    const finalRole = role === 'admin' ? 'admin' : 'employee';
-                    updates.push('role = ?');
-                    params.push(finalRole);
-                }
-                if (photo) {
-                    updates.push('photo = ?');
-                    params.push(photo);
-                }
-                
-                if (updates.length > 0) {
-                    const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE employee_id = ?`;
-                    params.push(id);
-                    await db.execute(updateQuery, params);
-                }
-            } catch (userUpdateErr) {
-                console.error('⚠️ Failed to sync user record:', userUpdateErr.message);
-                // We don't throw here so employee update still finishes
+                const userQuery = `UPDATE users SET ${userUpdates.join(', ')} WHERE employee_id = ?`;
+                userParams.push(id);
+                await db.execute(userQuery, userParams);
+            } catch (uErr) {
+                console.error('⚠️ User sync failed:', uErr.message);
             }
         }
 
