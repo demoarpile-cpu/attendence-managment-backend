@@ -201,16 +201,22 @@ const initDB = async () => {
 
         for (const col of columns) {
             try {
-                const [existingCols] = await db.execute(`SHOW COLUMNS FROM ${col.table} LIKE ?`, [col.column]);
+                // Using INFORMATION_SCHEMA is more reliable with placeholders than SHOW COLUMNS
+                const [existingCols] = await db.execute(
+                    'SELECT COLUMN_NAME, COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', 
+                    [col.table, col.column]
+                );
+
                 if (existingCols.length === 0) {
                     console.log(`➕ Adding missing column: ${col.column} to ${col.table}`);
-                    await db.execute(`ALTER TABLE ${col.table} ADD COLUMN ${col.column} ${col.type}`);
-                } else if (col.type.toUpperCase().includes('LONGTEXT') && !existingCols[0].Type.toUpperCase().includes('LONGTEXT')) {
+                    // Identifiers like table/column names cannot be placeholders
+                    await db.execute(`ALTER TABLE \`${col.table}\` ADD COLUMN \`${col.column}\` ${col.type}`);
+                } else if (col.type.toUpperCase().includes('LONGTEXT') && !existingCols[0].COLUMN_TYPE.toUpperCase().includes('longtext')) {
                     console.log(`⬆️ Upgrading column type: ${col.column} in ${col.table} to LONGTEXT`);
-                    await db.execute(`ALTER TABLE ${col.table} MODIFY COLUMN ${col.column} ${col.type}`);
+                    await db.execute(`ALTER TABLE \`${col.table}\` MODIFY COLUMN \`${col.column}\` ${col.type}`);
                 }
             } catch (err) {
-                console.error(`⚠️ Failed for ${col.column}:`, err.message);
+                console.error(`⚠️ Failed for ${col.column} in ${col.table}:`, err.message);
             }
         }
 
