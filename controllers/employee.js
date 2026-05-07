@@ -96,7 +96,7 @@ exports.addEmployee = async (req, res) => {
             parseFloat(advance_balance) || 0,
             eSignature || null,
             creatorId,
-            is_uif_registered === undefined ? 1 : (is_uif_registered ? 1 : 0)
+            (is_uif_registered === 'true' || is_uif_registered === true || is_uif_registered === 1 || is_uif_registered === '1') ? 1 : 0
         ];
 
         console.log('📝 Executing SQL (Add Employee):', empSql, 'Params:', empValues);
@@ -116,6 +116,10 @@ exports.addEmployee = async (req, res) => {
         res.status(201).json({ message: 'Personnel added successfully', id: employeeId });
     } catch (err) {
         console.error('❌ SQL Error (addEmployee):', err);
+        if (err.code === 'ER_DUP_ENTRY') {
+            const field = err.message.includes('machine_id') ? 'Machine ID' : 'Email';
+            return res.status(400).json({ message: `Duplicate entry: This ${field} is already assigned to another employee.` });
+        }
         res.status(500).json({ message: 'Error adding personnel', error: err.message });
     }
 };
