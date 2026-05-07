@@ -94,10 +94,12 @@ exports.addEmployee = async (req, res) => {
             photo || null,
             uif_number || '',
             parseFloat(advance_balance) || 0,
-            eSignature || null,
+            req.body.signature || null,
             creatorId,
             (is_uif_registered === 'true' || is_uif_registered === true || is_uif_registered === 1 || is_uif_registered === '1') ? 1 : 0
         ];
+
+        console.log('📝 Saving Signature. Length:', req.body.signature ? req.body.signature.length : 'EMPTY');
 
         console.log('📝 Executing SQL (Add Employee):', empSql, 'Params:', empValues);
         const [empResult] = await db.execute(empSql, empValues);
@@ -209,10 +211,10 @@ exports.updateEmployee = async (req, res) => {
         });
 
         if (photo !== undefined) { empUpdates.push('`photo` = ?'); empParams.push(photo); }
-        if (data.eSignature !== undefined) { 
-            console.log('📝 Updating Signature. Length:', data.eSignature ? data.eSignature.length : 0);
+        if (data.signature !== undefined) { 
+            console.log('📝 Updating Signature. Length:', data.signature ? data.signature.length : 0);
             empUpdates.push('`signature` = ?'); 
-            empParams.push(data.eSignature); 
+            empParams.push(data.signature); 
         }
         if (data.is_uif_registered !== undefined) {
             const isUif = data.is_uif_registered === 'true' || data.is_uif_registered === true || data.is_uif_registered === 1 || data.is_uif_registered === '1';
