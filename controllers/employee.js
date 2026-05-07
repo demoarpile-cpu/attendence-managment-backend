@@ -50,6 +50,8 @@ exports.addEmployee = async (req, res) => {
         uif_number, advance_balance, eSignature, is_uif_registered
     } = req.body;
 
+    console.log('📝 Add Employee Request. Signature received:', eSignature ? (eSignature.length + ' chars') : 'NO');
+
     // User who is creating this record
     const creatorId = req.user.id;
 
@@ -201,7 +203,11 @@ exports.updateEmployee = async (req, res) => {
         });
 
         if (photo !== undefined) { empUpdates.push('`photo` = ?'); empParams.push(photo); }
-        if (data.eSignature !== undefined) { empUpdates.push('`signature` = ?'); empParams.push(data.eSignature); }
+        if (data.eSignature !== undefined) { 
+            console.log('📝 Updating Signature. Length:', data.eSignature ? data.eSignature.length : 0);
+            empUpdates.push('`signature` = ?'); 
+            empParams.push(data.eSignature); 
+        }
         if (data.is_uif_registered !== undefined) {
             const isUif = data.is_uif_registered === 'true' || data.is_uif_registered === true || data.is_uif_registered === 1 || data.is_uif_registered === '1';
             empUpdates.push('`is_uif_registered` = ?');
