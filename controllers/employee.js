@@ -58,7 +58,8 @@ exports.addEmployee = async (req, res) => {
     // Use uploaded file if present
     let photo = req.body.photo;
     if (req.file) {
-        photo = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        photo = `${protocol}://${req.get('host')}/uploads/${req.file.filename}`;
     }
 
     try {
@@ -150,7 +151,8 @@ exports.updateEmployee = async (req, res) => {
     // Handle Profile Image Upload
     let photo = data.photo;
     if (req.file) {
-        photo = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+        const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+        photo = `${protocol}://${req.get('host')}/uploads/${req.file.filename}`;
     }
 
     try {
