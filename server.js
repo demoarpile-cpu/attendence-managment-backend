@@ -253,6 +253,14 @@ const initDB = async () => {
     }
 };
 
+// Global Error Handler
+app.use((err, req, res, next) => {
+    console.error('❌ Global Error:', err);
+    res.status(err.status || 500).json({
+        message: err.message || 'Internal Server Error'
+    });
+});
+
 server.listen(PORT, async () => {
     await initDB();
     console.log(`🚀 Server running on port ${PORT}`);
