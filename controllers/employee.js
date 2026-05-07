@@ -47,10 +47,10 @@ exports.addEmployee = async (req, res) => {
     const {
         machine_id, custom_id, name, role, department, shift, email, phone,
         salary_rate, salary_type, password, joined_date,
-        uif_number, advance_balance, eSignature, is_uif_registered
+        uif_number, advance_balance, signature, is_uif_registered
     } = req.body;
 
-    console.log('📝 Add Employee Request. Signature received:', eSignature ? (eSignature.length + ' chars') : 'NO');
+    console.log('📝 Add Employee Request. Signature received:', signature ? (signature.length + ' chars') : 'NO');
 
     // User who is creating this record
     const creatorId = req.user.id;
@@ -94,12 +94,12 @@ exports.addEmployee = async (req, res) => {
             photo || null,
             uif_number || '',
             parseFloat(advance_balance) || 0,
-            req.body.signature || null,
+            signature || null,
             creatorId,
             (is_uif_registered === 'true' || is_uif_registered === true || is_uif_registered === 1 || is_uif_registered === '1') ? 1 : 0
         ];
 
-        console.log('📝 Saving Signature. Length:', req.body.signature ? req.body.signature.length : 'EMPTY');
+        console.log('📝 Saving Signature to DB. Length:', signature ? signature.length : 'EMPTY');
 
         console.log('📝 Executing SQL (Add Employee):', empSql, 'Params:', empValues);
         const [empResult] = await db.execute(empSql, empValues);
