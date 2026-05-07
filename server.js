@@ -3,6 +3,7 @@ const cors = require('cors');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
