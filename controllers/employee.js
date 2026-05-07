@@ -273,12 +273,4 @@ exports.deleteEmployee = async (req, res) => {
         res.status(500).json({ message: 'Error deleting record', error: err.message });
     }
 };
-const [result] = await db.execute(empSql, [id]);
 
-if (result.affectedRows === 0) return res.status(404).json({ message: 'Record not found' });
-res.json({ message: 'Record deleted successfully' });
-    } catch (err) {
-    console.error('❌ SQL Error (deleteEmployee):', err);
-    res.status(500).json({ message: 'Error deleting record', error: err.message });
-}
-};
