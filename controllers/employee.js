@@ -4,6 +4,21 @@ const bcrypt = require('bcryptjs');
 // Helper: check if a role string is any kind of admin
 const isAdmin = (role) => role === 'admin' || role === 'Master Admin';
 
+// Get the next available IDs for new employee
+exports.getNextIds = async (req, res) => {
+    try {
+        const [[lastEmp]] = await db.execute("SELECT custom_id FROM employees WHERE custom_id REGEXP '^[0-9]+$' ORDER BY CAST(custom_id AS UNSIGNED) DESC LIMIT 1");
+        const nextCustomId = lastEmp && lastEmp.custom_id ? (parseInt(lastEmp.custom_id) + 1) : 1001;
+
+        const [[lastMachine]] = await db.execute("SELECT machine_id FROM employees WHERE machine_id REGEXP '^[0-9]+$' ORDER BY CAST(machine_id AS UNSIGNED) DESC LIMIT 1");
+        const nextMachineId = lastMachine && lastMachine.machine_id ? (parseInt(lastMachine.machine_id) + 1) : 1001;
+
+        res.json({ nextCustomId, nextMachineId });
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching next IDs', error: err.message });
+    }
+};
+
 // Get all employees (Filtered by creator if admin)
 exports.getAllEmployees = async (req, res) => {
     try {
@@ -17,7 +32,7 @@ exports.getAllEmployees = async (req, res) => {
         }
 
         query += ' ORDER BY created_at DESC';
-        
+
         console.log('📝 Executing SQL:', query, 'Params:', params);
         const [rows] = await db.execute(query, params);
         res.json(rows);
@@ -29,12 +44,12 @@ exports.getAllEmployees = async (req, res) => {
 
 // Add new employee / staff / admin
 exports.addEmployee = async (req, res) => {
-    const { 
-        machine_id, custom_id, name, role, department, shift, email, phone, 
-        salary_rate, salary_type, password, joined_date, 
-        uif_number, advance_balance, eSignature, is_uif_registered 
+    const {
+        machine_id, custom_id, name, role, department, shift, email, phone,
+        salary_rate, salary_type, password, joined_date,
+        uif_number, advance_balance, eSignature, is_uif_registered
     } = req.body;
-    
+
     // User who is creating this record
     const creatorId = req.user.id;
 
@@ -45,7 +60,14 @@ exports.addEmployee = async (req, res) => {
     }
 
     try {
-        // 1. Insert into employees table
+        // --- 1. Auto Generate Magic Numbers ---
+        const [[lastEmp]] = await db.execute("SELECT custom_id FROM employees WHERE custom_id REGEXP '^[0-9]+$' ORDER BY CAST(custom_id AS UNSIGNED) DESC LIMIT 1");
+        const nextCustomId = lastEmp && lastEmp.custom_id ? (parseInt(lastEmp.custom_id) + 1) : 1001;
+
+        const [[lastMachine]] = await db.execute("SELECT machine_id FROM employees WHERE machine_id REGEXP '^[0-9]+$' ORDER BY CAST(machine_id AS UNSIGNED) DESC LIMIT 1");
+        const nextMachineId = lastMachine && lastMachine.machine_id ? (parseInt(lastMachine.machine_id) + 1) : 1001;
+
+        // 2. Insert into employees table
         const formattedJoinedDate = joined_date ? joined_date.split('T')[0] : new Date().toISOString().split('T')[0];
 
         // Ensure role is valid — map any admin variant to 'admin'
@@ -55,20 +77,20 @@ exports.addEmployee = async (req, res) => {
 
         const empSql = 'INSERT INTO employees (machine_id, custom_id, name, role, department, shift, email, phone, salary_rate, salary_type, joined_date, photo, uif_number, advance_balance, signature, created_by, is_uif_registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
         const empValues = [
-            machine_id || null, 
-            custom_id || '', 
-            name || '', 
-            dbRole, 
-            department || 'General', 
-            dbShift, 
-            email || '', 
-            phone || '', 
-            parseFloat(salary_rate) || 0, 
-            dbSalaryType, 
-            formattedJoinedDate, 
-            photo || null, 
-            uif_number || '', 
-            parseFloat(advance_balance) || 0, 
+            nextMachineId.toString(),
+            custom_id || nextCustomId.toString(),
+            name || '',
+            dbRole,
+            department || 'General',
+            dbShift,
+            email || '',
+            phone || '',
+            parseFloat(salary_rate) || 0,
+            dbSalaryType,
+            formattedJoinedDate,
+            photo || null,
+            uif_number || '',
+            parseFloat(advance_balance) || 0,
             eSignature || null,
             creatorId,
             is_uif_registered === undefined ? 1 : (is_uif_registered ? 1 : 0)
@@ -80,11 +102,11 @@ exports.addEmployee = async (req, res) => {
         const employeeId = empResult.insertId;
         const hashedPassword = await bcrypt.hash(password || '123456', 10);
 
-        // 2. Create login user — map any admin variant to 'admin'
+        // 3. Create login user — map any admin variant to 'admin'
         const finalRole = isAdmin(role) ? 'admin' : 'employee';
         const userSql = 'INSERT INTO users (employee_id, email, password, role, name, created_by) VALUES (?, ?, ?, ?, ?, ?)';
         const userValues = [employeeId, email || '', hashedPassword, finalRole, name || '', creatorId];
-        
+
         console.log('📝 Executing SQL (Create User):', userSql, 'Params:', userValues);
         await db.execute(userSql, userValues);
 
@@ -102,12 +124,12 @@ exports.getEmployeeById = async (req, res) => {
         console.log('📝 Executing SQL:', sql, 'Params:', [req.params.id]);
         const [rows] = await db.execute(sql, [req.params.id]);
         if (rows.length === 0) return res.status(404).json({ message: 'Not found' });
-        
+
         // Safety: If regular admin (not Master Admin), check if they own this record
         if (isAdmin(req.user.role) && req.user.role !== 'Master Admin' && rows[0].created_by !== req.user.id) {
             return res.status(403).json({ message: 'Access denied to this record' });
         }
-        
+
         res.json(rows[0]);
     } catch (err) {
         console.error('❌ SQL Error (getEmployeeById):', err);
@@ -133,7 +155,7 @@ exports.updateEmployee = async (req, res) => {
         // 1. Safety Check: Verify ownership if admin
         const [existing] = await db.execute('SELECT created_by FROM employees WHERE id = ?', [id]);
         if (existing.length === 0) return res.status(404).json({ message: 'Employee not found' });
-        
+
         if (isAdmin(req.user.role) && req.user.role !== 'Master Admin' && existing[0].created_by !== req.user.id && existing[0].created_by !== null) {
             return res.status(403).json({ message: 'Cannot edit staff added by another admin' });
         }
@@ -141,10 +163,10 @@ exports.updateEmployee = async (req, res) => {
         // 2. Build Dynamic Update for Employees Table
         const empUpdates = [];
         const empParams = [];
-        
+
         const empFields = [
-            'machine_id', 'custom_id', 'name', 'role', 'department', 'shift', 
-            'email', 'phone', 'salary_rate', 'salary_type', 'uif_number', 
+            'machine_id', 'custom_id', 'name', 'role', 'department', 'shift',
+            'email', 'phone', 'salary_rate', 'salary_type', 'uif_number',
             'advance_balance', 'status'
         ];
 
@@ -152,7 +174,7 @@ exports.updateEmployee = async (req, res) => {
             if (data[field] !== undefined) {
                 empUpdates.push(`\`${field}\` = ?`);
                 let val = data[field] === '' ? null : data[field];
-                
+
                 // Ensure numeric fields are numbers or null
                 if (field === 'salary_rate' || field === 'advance_balance') {
                     const parsed = parseFloat(val);
@@ -202,7 +224,7 @@ exports.updateEmployee = async (req, res) => {
         if (data.name) { userUpdates.push('name = ?'); userParams.push(data.name); }
         if (photo) { userUpdates.push('photo = ?'); userParams.push(photo); }
         if (data.role) { userUpdates.push('role = ?'); userParams.push(isAdmin(data.role) ? 'admin' : 'employee'); }
-        
+
         if (data.password && data.password.trim() !== '') {
             const hashedPassword = await bcrypt.hash(data.password, 10);
             userUpdates.push('password = ?');
@@ -243,11 +265,20 @@ exports.deleteEmployee = async (req, res) => {
         const empSql = 'DELETE FROM employees WHERE id = ?';
         console.log('📝 Executing SQL:', empSql, 'Params:', [id]);
         const [result] = await db.execute(empSql, [id]);
-        
+
         if (result.affectedRows === 0) return res.status(404).json({ message: 'Record not found' });
         res.json({ message: 'Record deleted successfully' });
     } catch (err) {
         console.error('❌ SQL Error (deleteEmployee):', err);
         res.status(500).json({ message: 'Error deleting record', error: err.message });
     }
+};
+const [result] = await db.execute(empSql, [id]);
+
+if (result.affectedRows === 0) return res.status(404).json({ message: 'Record not found' });
+res.json({ message: 'Record deleted successfully' });
+    } catch (err) {
+    console.error('❌ SQL Error (deleteEmployee):', err);
+    res.status(500).json({ message: 'Error deleting record', error: err.message });
+}
 };

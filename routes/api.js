@@ -16,7 +16,7 @@ const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, 'uploads/'),
     filename: (req, file, cb) => cb(null, `profile-${Date.now()}${path.extname(file.originalname)}`)
 });
-const upload = multer({ 
+const upload = multer({
     storage,
     limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
 });
@@ -29,6 +29,7 @@ router.get('/profile', auth, profileController.getProfile);
 router.put('/profile', auth, profileController.updateProfile);
 
 // Employees
+router.get('/employees/next-ids', auth, employeeController.getNextIds);
 router.get('/employees', auth, employeeController.getAllEmployees);
 router.get('/employees/:id', auth, employeeController.getEmployeeById);
 router.post('/employees', auth, upload.single('profileImage'), employeeController.addEmployee);

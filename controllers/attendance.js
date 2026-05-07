@@ -45,9 +45,9 @@ exports.getAttendance = async (req, res) => {
     if (whereClauses.length > 0) {
         query += ' WHERE ' + whereClauses.join(' AND ');
     }
- 
+
     query += ' ORDER BY a.date DESC, a.in_time DESC';
- 
+
     try {
         console.log('📝 Executing SQL (getAttendance):', query, 'Params:', params);
         const [rows] = await db.execute(query, params);
@@ -74,12 +74,12 @@ const processAllRawLogs = async () => {
 
     let count = 0;
     for (let log of rawLogs) {
-        const dateTimeStr = log.punch_time; 
+        const dateTimeStr = log.punch_time;
         const date = dateTimeStr.split(' ')[0];
         const time = dateTimeStr.split(' ')[1];
 
         const [emps] = await db.execute('SELECT id FROM employees WHERE machine_id = ?', [log.machine_user_id]);
-        
+
         if (emps.length > 0) {
             const employeeId = emps[0].id;
             const [existing] = await db.execute('SELECT * FROM attendance WHERE employee_id = ? AND date = ?', [employeeId, date]);
@@ -99,7 +99,7 @@ const processAllRawLogs = async () => {
                 const inTime = new Date(existing[0].in_time);
                 const outTime = new Date(log.punch_time);
                 const diffMs = outTime - inTime;
-                
+
                 if (diffMs > 0) {
                     const hours = (diffMs / (1000 * 60 * 60)).toFixed(2);
                     await db.execute('UPDATE attendance SET out_time = ?, total_hours = ? WHERE id = ?', [log.punch_time, hours, existing[0].id]);
@@ -142,10 +142,10 @@ exports.addManualAttendance = async (req, res) => {
         }
         const sql = 'INSERT INTO attendance (employee_id, date, in_time, out_time, total_hours, status) VALUES (?, ?, ?, ?, ?, ?)';
         const values = [employeeId, date, fIn, fOut, totalHours, status || 'present'];
-        
+
         console.log('📝 Executing SQL (Add Manual Attendance):', sql, 'Params:', values);
         await db.execute(sql, values);
-        
+
         await logAudit(req.user.id, 'ADD_MANUAL_ATTENDANCE', employeeId, { date, status });
         res.json({ message: 'Added successfully' });
     } catch (err) {
@@ -170,19 +170,19 @@ exports.updateAttendance = async (req, res) => {
         };
         const fIn = normalize(in_time);
         const fOut = normalize(out_time);
-        
+
         let totalHours = 0;
         if (fIn && fOut) {
             const diff = new Date(fOut.replace(' ', 'T')) - new Date(fIn.replace(' ', 'T'));
             totalHours = Math.max(0, (diff / (1000 * 60 * 60))).toFixed(2);
         }
-        
+
         const finalStatus = status ? status.toLowerCase() : 'present';
         const finalDate = fIn ? fIn.split(' ')[0] : null;
 
         const sql = 'UPDATE attendance SET in_time = ?, out_time = ?, status = ?, total_hours = ?, date = ? WHERE id = ?';
         const values = [fIn, fOut, finalStatus, totalHours, finalDate, id];
-        
+
         console.log('📝 Executing SQL (Update Attendance):', sql, 'Params:', values);
         await db.execute(sql, values);
         res.json({ message: 'Updated' });
@@ -197,10 +197,10 @@ exports.bulkMarkAttendance = async (req, res) => {
     try {
         const finalIn = inTime || '08:00';
         const finalOut = outTime || '17:00';
-        
+
         let fIn = `${date} ${finalIn}:00`;
         let fOut = `${date} ${finalOut}:00`;
-        
+
         // Calculate hours robustly
         const diff = new Date(fOut.replace(' ', 'T')) - new Date(fIn.replace(' ', 'T'));
         const totalHours = Math.max(0, (diff / (1000 * 60 * 60))).toFixed(2);
@@ -213,12 +213,12 @@ exports.bulkMarkAttendance = async (req, res) => {
             const [existing] = await db.execute('SELECT id FROM attendance WHERE employee_id = ? AND date = ?', [empId, date]);
             if (existing.length > 0) {
                 await db.execute(
-                    'UPDATE attendance SET status = ?, in_time = ?, out_time = ?, total_hours = ?, marked_by = ? WHERE id = ?', 
+                    'UPDATE attendance SET status = ?, in_time = ?, out_time = ?, total_hours = ?, marked_by = ? WHERE id = ?',
                     [status, fIn, fOut, totalHours, req.user.id, existing[0].id]
                 );
             } else {
                 await db.execute(
-                    'INSERT INTO attendance (employee_id, date, status, in_time, out_time, total_hours, marked_by) VALUES (?, ?, ?, ?, ?, ?, ?)', 
+                    'INSERT INTO attendance (employee_id, date, status, in_time, out_time, total_hours, marked_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
                     [empId, date, status, fIn, fOut, totalHours, req.user.id]
                 );
             }
@@ -234,7 +234,7 @@ exports.getDashboardStats = async (req, res) => {
         const now = new Date();
         const offset = now.getTimezoneOffset();
         const localToday = new Date(now.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
-        
+
         const today = req.query.date || localToday;
         const cycleStart = now.getDate() <= 15 ? 1 : 16;
         const cycleEnd = now.getDate() <= 15 ? 15 : 31;
@@ -264,7 +264,7 @@ exports.getDashboardStats = async (req, res) => {
         const [attendance] = await db.execute(attQuery, attParams);
 
         // Identify Present and Absent IDs
-        const presentIds = attendance.filter(a => 
+        const presentIds = attendance.filter(a =>
             ['present', 'late', 'half_day'].includes(a.status?.toLowerCase())
         ).map(a => a.employee_id);
 
@@ -299,10 +299,10 @@ exports.getDashboardStats = async (req, res) => {
         // 5. Generate 7-Day Trend Data
         const trendData = [];
         for (let i = 6; i >= 0; i--) {
-            const d = new Date(); 
+            const d = new Date();
             d.setDate(d.getDate() - i);
             const dStr = d.toISOString().split('T')[0];
-            
+
             let trendQuery = `
                 SELECT COUNT(*) as count 
                 FROM attendance a 
@@ -314,14 +314,14 @@ exports.getDashboardStats = async (req, res) => {
                 trendQuery += ' AND (e.created_by = ? OR e.created_by IS NULL)';
                 trendParams.push(req.user.id);
             }
-            
+
             const [attDay] = await db.execute(trendQuery, trendParams);
             const presentCount = attDay[0].count;
-            
-            trendData.push({ 
-                name: d.toLocaleDateString('en-US', { weekday: 'short' }), 
-                present: presentCount, 
-                absent: Math.max(0, employees.length - presentCount) 
+
+            trendData.push({
+                name: d.toLocaleDateString('en-US', { weekday: 'short' }),
+                present: presentCount,
+                absent: Math.max(0, employees.length - presentCount)
             });
         }
 
@@ -332,11 +332,11 @@ exports.getDashboardStats = async (req, res) => {
             lateToday: attendance.filter(a => a.status?.toLowerCase() === 'late').length,
             absentStaff: absentStaff, // Full list for the UI
             trend: trendData,
-            salaryCycle: { 
-                progress: Math.min(Math.round(((now.getDate() - cycleStart + 1) / (cycleEnd - cycleStart + 1)) * 100), 100), 
-                day: now.getDate() - cycleStart + 1, 
-                totalDays: cycleEnd - cycleStart + 1, 
-                estimatedPayout: totalPayout 
+            salaryCycle: {
+                progress: Math.min(Math.round(((now.getDate() - cycleStart + 1) / (cycleEnd - cycleStart + 1)) * 100), 100),
+                day: now.getDate() - cycleStart + 1,
+                totalDays: cycleEnd - cycleStart + 1,
+                estimatedPayout: totalPayout
             }
         });
     } catch (err) {
@@ -345,7 +345,7 @@ exports.getDashboardStats = async (req, res) => {
 };
 
 exports.getPublicHolidays = async (req, res) => {
-    try { const [rows] = await db.execute('SELECT * FROM public_holidays ORDER BY holiday_date ASC'); res.json(rows); } 
+    try { const [rows] = await db.execute('SELECT * FROM public_holidays ORDER BY holiday_date ASC'); res.json(rows); }
     catch (err) { res.status(500).json({ message: 'Error', error: err.message }); }
 };
 
@@ -371,6 +371,6 @@ exports.deletePublicHoliday = async (req, res) => {
 };
 
 const logAudit = async (adminId, action, targetId, details) => {
-    try { await db.execute('INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, ?, ?, ?)', [adminId, action, targetId, JSON.stringify(details)]); } 
+    try { await db.execute('INSERT INTO audit_logs (admin_id, action, target_id, details) VALUES (?, ?, ?, ?)', [adminId, action, targetId, JSON.stringify(details)]); }
     catch (err) { console.error('Audit failed:', err); }
 };
