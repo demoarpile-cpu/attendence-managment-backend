@@ -1,7 +1,11 @@
 const db = require('../config/db');
 
-// Helper: treat both 'admin' and 'Master Admin' as admin roles
-const isAdmin = (role) => role === 'admin' || role === 'Master Admin';
+// Helper: treat 'admin', 'Master Admin', 'hr', and 'hr admin' as admin roles
+const isAdmin = (role) => {
+    if (!role) return false;
+    const r = role.toLowerCase();
+    return r === 'admin' || r === 'master admin' || r === 'hr' || r === 'hr admin';
+};
 
 exports.generatePayroll = async (req, res) => {
     let { employeeIds, cycleStart, cycleEnd, startDate, endDate } = req.body;

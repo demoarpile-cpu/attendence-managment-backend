@@ -1,8 +1,12 @@
 const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 
-// Helper: check if a role string is any kind of admin
-const isAdmin = (role) => role === 'admin' || role === 'Master Admin';
+// Helper: treat 'admin', 'Master Admin', 'hr', and 'hr admin' as admin roles
+const isAdmin = (role) => {
+    if (!role) return false;
+    const r = role.toLowerCase();
+    return r === 'admin' || r === 'master admin' || r === 'hr' || r === 'hr admin';
+};
 
 // Get the next available IDs for new employee
 exports.getNextIds = async (req, res) => {
@@ -73,8 +77,8 @@ exports.addEmployee = async (req, res) => {
         // 2. Insert into employees table
         const formattedJoinedDate = joined_date ? joined_date.split('T')[0] : new Date().toISOString().split('T')[0];
 
-        // Ensure role is valid — map any admin variant to 'admin'
-        const dbRole = isAdmin(role) ? 'admin' : 'employee';
+        // Ensure role is valid — normalize if it's an admin variant
+        const dbRole = isAdmin(role) ? role.toLowerCase() : 'employee';
         const dbShift = ['Morning Shift', 'Evening Shift', 'Night Shift'].includes(shift) ? shift : 'Morning Shift';
         const dbSalaryType = ['hourly', 'daily'].includes(salary_type) ? salary_type : 'hourly';
 
@@ -107,8 +111,8 @@ exports.addEmployee = async (req, res) => {
         const employeeId = empResult.insertId;
         const hashedPassword = await bcrypt.hash(password || '123456', 10);
 
-        // 3. Create login user — map any admin variant to 'admin'
-        const finalRole = isAdmin(role) ? 'admin' : 'employee';
+        // 3. Create login user
+        const finalRole = isAdmin(role) ? role.toLowerCase() : 'employee';
         const userSql = 'INSERT INTO users (employee_id, email, password, role, name, created_by) VALUES (?, ?, ?, ?, ?, ?)';
         const userValues = [employeeId, email || '', hashedPassword, finalRole, name || '', creatorId];
 
@@ -192,7 +196,7 @@ exports.updateEmployee = async (req, res) => {
                 }
 
                 // Map/Validate ENUM fields
-                if (field === 'role') val = isAdmin(val) ? 'admin' : 'employee';
+                if (field === 'role') val = isAdmin(val) ? val.toLowerCase() : 'employee';
                 if (field === 'shift') {
                     const validShifts = ['Morning Shift', 'Evening Shift', 'Night Shift'];
                     if (!validShifts.includes(val)) val = 'Morning Shift';
@@ -237,7 +241,7 @@ exports.updateEmployee = async (req, res) => {
         if (data.email) { userUpdates.push('email = ?'); userParams.push(data.email); }
         if (data.name) { userUpdates.push('name = ?'); userParams.push(data.name); }
         if (photo) { userUpdates.push('photo = ?'); userParams.push(photo); }
-        if (data.role) { userUpdates.push('role = ?'); userParams.push(isAdmin(data.role) ? 'admin' : 'employee'); }
+        if (data.role) { userUpdates.push('role = ?'); userParams.push(isAdmin(data.role) ? data.role.toLowerCase() : 'employee'); }
 
         if (data.password && data.password.trim() !== '') {
             const hashedPassword = await bcrypt.hash(data.password, 10);
